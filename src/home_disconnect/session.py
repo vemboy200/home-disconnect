@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import aiohttp
 from Crypto.Random import get_random_bytes
 
-from homeconnect_websocket.task_manager import TaskManager
+from home_disconnect.task_manager import TaskManager
 
 from .const import DEFAULT_SEND_TIMEOUT, ERROR_CODES
 from .errors import (

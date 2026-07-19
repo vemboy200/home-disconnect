@@ -1,5 +1,5 @@
 {
-    "name": "homeconnect_websocket",
+    "name": "home_disconnect",
     "image": "mcr.microsoft.com/devcontainers/python:3.13",
     "postCreateCommand": [
         "script/setup.sh"

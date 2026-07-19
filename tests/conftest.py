@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING
 import pytest_asyncio
 from aiohttp import web
 from aiohttp.test_utils import TestServer
-from homeconnect_websocket.testutils import TEST_IV64, TEST_PSK64
+from home_disconnect.testutils import TEST_IV64, TEST_PSK64
 
 from utils import ApplianceServer, ApplianceServerAes
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable
 
-pytest_plugins = ["aiohttp.pytest_plugin", "homeconnect_websocket.testutils"]
+pytest_plugins = ["aiohttp.pytest_plugin", "home_disconnect.testutils"]
 
 
 @pytest_asyncio.fixture

@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/homeconnect-websocket/
+      url: https://pypi.org/project/home-disconnect/
     permissions:
       id-token: write
       contents: read

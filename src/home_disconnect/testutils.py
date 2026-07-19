@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from homeconnect_websocket import HomeAppliance
-from homeconnect_websocket.callback_manager import CallbackManager
-from homeconnect_websocket.session import HCSession
-from homeconnect_websocket.task_manager import TaskManager
+from home_disconnect import HomeAppliance
+from home_disconnect.callback_manager import CallbackManager
+from home_disconnect.session import HCSession
+from home_disconnect.task_manager import TaskManager
 
 from .entities import DeviceDescription
 

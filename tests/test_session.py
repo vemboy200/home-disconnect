@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import ANY, AsyncMock, call
 
 import pytest
-from homeconnect_websocket import (
+from home_disconnect import (
     AllreadyConnectedError,
     AuthenticationError,
     ConnectionFailedError,
@@ -13,8 +13,8 @@ from homeconnect_websocket import (
     HCSession,
     HCSessionReconnect,
 )
-from homeconnect_websocket.message import Action, Message
-from homeconnect_websocket.testutils import TEST_APP_ID, TEST_APP_NAME
+from home_disconnect.message import Action, Message
+from home_disconnect.testutils import TEST_APP_ID, TEST_APP_NAME
 
 from const import (
     CLIENT_MESSAGE_ID,

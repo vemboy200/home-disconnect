@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 dynamic = ["version"]
-name = "homeconnect_websocket"
-authors = [{ name = "chris-mc1" }]
+name = "home-disconnect"
+authors = [{ name = "chris-mc1" }, { name = "vemboy200" }]
 dependencies = [
  "aiohttp>=3.10",
  "xmltodict>=0.13.0",
@@ -21,11 +21,11 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/chris-mc1/homeconnect_websocket"
-Issues = "https://github.com/chris-mc1/homeconnect_websocket/issues"
+Homepage = "https://github.com/vemboy200/home-disconnect"
+Issues = "https://github.com/vemboy200/home-disconnect/issues"
 
 [project.scripts]
-hc-parser = "homeconnect_websocket:description_parser.main"
+hc-parser = "home_disconnect:description_parser.main"
 
 [dependency-groups]
 dev = [

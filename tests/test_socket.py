@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock
 import pytest
 from aiohttp import WSMessage, WSMsgType
 from Crypto.Random import get_random_bytes
-from homeconnect_websocket import AuthenticationError
-from homeconnect_websocket.hc_socket import AesSocket, TlsSocket
-from homeconnect_websocket.testutils import TEST_IV64, TEST_PSK64
+from home_disconnect import AuthenticationError
+from home_disconnect.hc_socket import AesSocket, TlsSocket
+from home_disconnect.testutils import TEST_IV64, TEST_PSK64
 
 from const import CLIENT_MESSAGE_ID, DEVICE_MESSAGE_SET_1, SERVER_MESSAGE_ID, SESSION_ID
 from utils import AesServerEncryption, ApplianceServer, ApplianceServerAes

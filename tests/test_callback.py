@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import homeconnect_websocket.appliance
+import home_disconnect.appliance
 import pytest
-from homeconnect_websocket.appliance import HomeAppliance
-from homeconnect_websocket.entities import (
+from home_disconnect.appliance import HomeAppliance
+from home_disconnect.entities import (
     Access,
     Entity,
     EntityDescription,
 )
-from homeconnect_websocket.testutils import (
+from home_disconnect.testutils import (
     BASE_DESCRIPTION,
     TEST_APP_ID,
     TEST_APP_NAME,
@@ -32,7 +32,7 @@ async def test_call_callback(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     )
 
-    monkeypatch.setattr(homeconnect_websocket.appliance, "HCSession", MagicMock())
+    monkeypatch.setattr(home_disconnect.appliance, "HCSession", MagicMock())
     appliance = HomeAppliance(
         description, "127.0.0.1", TEST_APP_NAME, TEST_APP_ID, TEST_PSK64
     )
@@ -98,7 +98,7 @@ async def test_callback_lock(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     )
 
-    monkeypatch.setattr(homeconnect_websocket.appliance, "HCSession", MagicMock())
+    monkeypatch.setattr(home_disconnect.appliance, "HCSession", MagicMock())
     appliance = HomeAppliance(
         description, "127.0.0.1", TEST_APP_NAME, TEST_APP_ID, TEST_PSK64
     )
@@ -145,7 +145,7 @@ async def test_batch_callback(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     )
 
-    monkeypatch.setattr(homeconnect_websocket.appliance, "HCSession", MagicMock())
+    monkeypatch.setattr(home_disconnect.appliance, "HCSession", MagicMock())
     appliance = HomeAppliance(
         description, "127.0.0.1", TEST_APP_NAME, TEST_APP_ID, TEST_PSK64
     )

@@ -1,4 +1,4 @@
-from homeconnect_websocket.message import Action, Message
+from home_disconnect.message import Action, Message
 
 SESSION_ID = 10
 SERVER_MESSAGE_ID = 20

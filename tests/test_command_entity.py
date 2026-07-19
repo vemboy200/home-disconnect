@@ -3,9 +3,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
-from homeconnect_websocket import AccessError
-from homeconnect_websocket.entities import Access, Command, EntityDescription
-from homeconnect_websocket.message import Action, Message
+from home_disconnect import AccessError
+from home_disconnect.entities import Access, Command, EntityDescription
+from home_disconnect.message import Action, Message
 
 
 @pytest.mark.asyncio

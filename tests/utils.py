@@ -9,8 +9,8 @@ import aiohttp
 from aiohttp import web
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
-from homeconnect_websocket.hc_socket import MINIMUM_MESSAGE_LENGTH
-from homeconnect_websocket.message import Message, load_message
+from home_disconnect.hc_socket import MINIMUM_MESSAGE_LENGTH
+from home_disconnect.message import Message, load_message
 
 from const import (
     SERVER_MESSAGE_ID,

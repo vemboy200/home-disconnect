@@ -4,7 +4,7 @@ from typing import ClassVar
 from unittest.mock import AsyncMock
 
 import pytest
-from homeconnect_websocket.entities import EntityDescription, Event
+from home_disconnect.entities import EntityDescription, Event
 
 
 class MockAppliance(AsyncMock):

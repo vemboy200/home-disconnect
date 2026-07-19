@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from homeconnect_websocket.message import Action, Message, load_message
+from home_disconnect.message import Action, Message, load_message
 
 
 def test_message_load() -> None:

@@ -3,9 +3,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
-from homeconnect_websocket import AccessError, CodeResponsError
-from homeconnect_websocket.entities import Access, Entity, EntityDescription, Status
-from homeconnect_websocket.message import Action, Message
+from home_disconnect import AccessError, CodeResponsError
+from home_disconnect.entities import Access, Entity, EntityDescription, Status
+from home_disconnect.message import Action, Message
 
 
 def test_init_base() -> None:

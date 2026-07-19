@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from homeconnect_websocket.description_parser import (
+from home_disconnect.description_parser import (
     convert_bool,
     parse_device_description,
 )

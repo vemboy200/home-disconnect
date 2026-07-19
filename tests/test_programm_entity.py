@@ -3,15 +3,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from homeconnect_websocket.entities import (
+from home_disconnect.entities import (
     EntityDescription,
     OptionDescription,
     Program,
 )
-from homeconnect_websocket.message import Action, Message
+from home_disconnect.message import Action, Message
 
 if TYPE_CHECKING:
-    from homeconnect_websocket.testutils import MockApplianceType
+    from home_disconnect.testutils import MockApplianceType
 
 
 @pytest.mark.asyncio

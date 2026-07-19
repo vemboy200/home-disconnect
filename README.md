@@ -18,7 +18,7 @@ For each registered Appliance, the downloaded zip-file contains three files name
 import json
 from pathlib import Path
 
-from homeconnect_websocket import parse_device_description
+from home_disconnect import parse_device_description
 
 # Load Description from File
 with Path("[serialNumber]_DeviceDescription.xml").open() as file:
@@ -44,7 +44,7 @@ Its best to save the parsed description as a json File to reuse later.
 import asyncio
 import json
 
-from homeconnect_websocket import DeviceDescription, HomeAppliance
+from home_disconnect import DeviceDescription, HomeAppliance
 
 
 async def main(description: DeviceDescription) -> None:

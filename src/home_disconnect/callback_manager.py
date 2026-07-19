@@ -4,13 +4,13 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
-from homeconnect_websocket.task_manager import TaskManager
+from home_disconnect.task_manager import TaskManager
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from types import TracebackType
 
-    from homeconnect_websocket.entities import Entity
+    from home_disconnect.entities import Entity
 
 
 class CallbackManager:
