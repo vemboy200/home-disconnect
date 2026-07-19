@@ -2,6 +2,8 @@
 
 Control Home Connect Appliances through a local Websocket connection.
 
+Used by [homeconnect_local_hass](https://github.com/vemboy200/homeconnect_local_hass), the Home Assistant integration this library was extracted for.
+
 ## Authentication and Device Description
 
 To connect to an Appliance, you need its encryption keys and the description of its features and options. The Appliance uses either TLS PSK or AES encryption, AES requiring an additional Initialization Vector (IV). Both Key and IV are send to Home Connect cloud servers on setup. To get the keys and description from the cloud use the [Home Connect Profile Downloader](https://github.com/bruestel/homeconnect-profile-downloader) tool.
