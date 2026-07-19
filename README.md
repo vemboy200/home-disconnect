@@ -1,6 +1,6 @@
-# HomeConnect Websocket
+# Home Disconnect
 
-Control HomeConnect Appliances through a local Websocket connection.
+Control Home Connect Appliances through a local Websocket connection.
 
 ## Authentication and Device Description
 
