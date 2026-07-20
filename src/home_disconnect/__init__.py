@@ -1,5 +1,6 @@
 from .appliance import HomeAppliance
 from .description_parser import parse_device_description
+from .description_serializer import serialize_device_description
 from .entities import DeviceDescription, Entity
 from .errors import (
     AccessError,
@@ -35,4 +36,5 @@ __all__ = [
     "NotConnectedError",
     "ParserError",
     "parse_device_description",
+    "serialize_device_description",
 ]
