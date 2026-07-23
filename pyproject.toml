@@ -41,6 +41,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+home_disconnect = ["py.typed"]
+
 [tool.versioningit.vcs]
 default-tag = "0.0.0"
 
