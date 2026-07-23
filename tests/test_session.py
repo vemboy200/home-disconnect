@@ -484,6 +484,7 @@ async def test_session_connection_closed(
 
     assert not session.connected
     assert session.connection_state == ConnectionState.ABNORMAL_CLOSURE
+    assert session.last_close_code == 1000
 
     connection_callback.assert_has_awaits(
         [
@@ -525,6 +526,7 @@ async def test_session_reconnect_manual(
 
     assert not session.connected
     assert session.connection_state == ConnectionState.ABNORMAL_CLOSURE
+    assert session.last_close_code == 1000
 
     await session.connect()
 
@@ -574,6 +576,7 @@ async def test_session_reconnect_auto(
 
     assert not session.connected
     assert session.connection_state == ConnectionState.RECONNECTING
+    assert session.last_close_code == 1000
 
     await asyncio.sleep(1)
 
@@ -625,6 +628,7 @@ async def test_session_reconnect_auto_handshake(
 
     assert not session.connected
     assert session.connection_state == ConnectionState.RECONNECTING
+    assert session.last_close_code == 1000
 
     await asyncio.sleep(1)
 

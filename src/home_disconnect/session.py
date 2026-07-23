@@ -66,6 +66,7 @@ class HCSessionBase:
     _logger: logging.Logger
     _connection_state_callback: Callable[[ConnectionState], Awaitable[None]] | None
     _task_manager: TaskManager
+    _last_close_code: int | None = None
 
     def __init__(  # noqa: PLR0913
         self,
@@ -114,6 +115,18 @@ class HCSessionBase:
             and self.connection_state == ConnectionState.CONNECTED
         )
 
+    @property
+    def last_close_code(self) -> int | None:
+        """
+        WebSocket close code from the most recent disconnect, if any.
+
+        Code 1000 (Normal Closure) means the appliance sent a clean
+        "I'm disconnecting" close frame before dropping - e.g. a washer/dryer
+        powering off between cycles - rather than just vanishing off the
+        network. None if the session has never disconnected.
+        """
+        return self._last_close_code
+
     @abstractmethod
     async def _message_handler(self, message: Message) -> None:
         pass
@@ -154,9 +167,10 @@ class HCSessionBase:
             self._logger.exception("Receive loop Exception")
         finally:
             if self._socket.closed:
+                self._last_close_code = self._socket._websocket.close_code  # noqa: SLF001
                 self._logger.debug(
                     "Socket closed with code %s",
-                    self._socket._websocket.close_code,  # noqa: SLF001
+                    self._last_close_code,
                     exc_info=self._socket._websocket.exception(),  # noqa: SLF001
                 )
                 self._set_connection_state(ConnectionState.ABNORMAL_CLOSURE)
@@ -574,9 +588,10 @@ class HCSessionReconnect(HCSession):
             self._logger.exception("Receive loop Exception")
         finally:
             if self._socket.closed:
+                self._last_close_code = self._socket._websocket.close_code  # noqa: SLF001
                 self._logger.debug(
                     "Socket closed with code %s",
-                    self._socket._websocket.close_code,  # noqa: SLF001
+                    self._last_close_code,
                     exc_info=self._socket._websocket.exception(),  # noqa: SLF001
                 )
                 if self._reconnect:
