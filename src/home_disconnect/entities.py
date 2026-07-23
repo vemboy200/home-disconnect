@@ -491,7 +491,7 @@ class Program(AvailableMixin, Entity):
 
     def _build_options(
         self,
-        options: dict[str, str | int | bool] | None = None,
+        options: dict[int, str | int | bool] | None = None,
         *,
         override_options: bool = False,
     ) -> list[dict[str, Any]]:
@@ -511,11 +511,20 @@ class Program(AvailableMixin, Entity):
 
     async def select(
         self,
-        options: dict[str, str | int | bool] | None = None,
+        options: dict[int, str | int | bool] | None = None,
         *,
         override_options: bool = False,
     ) -> None:
-        """Select this Program."""
+        """
+        Select this Program.
+
+        Args:
+        ----
+            options: Option UID -> value, not option name.
+            override_options: Replace the program's existing writable options
+                entirely instead of merging with them.
+
+        """
         message = Message(
             resource="/ro/selectedProgram",
             action=Action.POST,
@@ -530,11 +539,20 @@ class Program(AvailableMixin, Entity):
 
     async def start(
         self,
-        options: dict[str, str | int | bool] | None = None,
+        options: dict[int, str | int | bool] | None = None,
         *,
         override_options: bool = False,
     ) -> None:
-        """Start this Program, select might be required first."""
+        """
+        Start this Program, select might be required first.
+
+        Args:
+        ----
+            options: Option UID -> value, not option name.
+            override_options: Replace the program's existing writable options
+                entirely instead of merging with them.
+
+        """
         message = Message(
             resource="/ro/activeProgram",
             action=Action.POST,

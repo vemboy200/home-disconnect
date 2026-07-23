@@ -206,15 +206,16 @@ PARSERS = {
 
 
 def parse_device_description(
-    device_description_xml: str | TextIO, feature_mapping_xml: str | TextIO
+    device_description_xml: str | bytes | TextIO,
+    feature_mapping_xml: str | bytes | TextIO,
 ) -> DeviceDescription:
     """
     Parse device description from XML-Files.
 
     Args:
     ----
-        device_description_xml (str | TextIO): Device description XML-File
-        feature_mapping_xml (str | TextIO): Feature mapping XML-File
+        device_description_xml (str | bytes | TextIO): Device description XML-File
+        feature_mapping_xml (str | bytes | TextIO): Feature mapping XML-File
 
     """
     try:
