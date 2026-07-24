@@ -16,6 +16,7 @@ ignore = [
     "D100",
     "D104",
     "D105",
+    "CPY001", # this project doesn't use copyright header notices
 ]
 
 [lint.flake8-pytest-style]
