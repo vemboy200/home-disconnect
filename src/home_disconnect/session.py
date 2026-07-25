@@ -142,6 +142,14 @@ class HCSessionBase:
         """
         state_change = self.connection_state != new_state
         self.connection_state = new_state
+        if new_state == ConnectionState.CONNECTED:
+            # last_close_code describes the *most recent* disconnect - once a
+            # new connection is actually up, a stale close code from before
+            # this connection no longer describes anything real. Without
+            # this, a session that has ever seen one clean (code 1000) close
+            # would report last_close_code == 1000 forever after, even while
+            # fully connected and receiving live updates.
+            self._last_close_code = None
         if state_change and self._connection_state_callback:
             self._task_manager.create_task(
                 self._wrap_connection_state_callback(new_state)

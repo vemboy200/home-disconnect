@@ -530,6 +530,10 @@ async def test_session_reconnect_manual(
 
     await session.connect()
 
+    # A fresh connection makes the previous disconnect's close code stale -
+    # it no longer describes the session's current state.
+    assert session.last_close_code is None
+
     await session.close()
 
     connection_callback.assert_has_awaits(
@@ -582,6 +586,9 @@ async def test_session_reconnect_auto(
 
     assert session.connected
     assert session.connection_state == ConnectionState.CONNECTED
+    # A fresh connection makes the previous disconnect's close code stale -
+    # it no longer describes the session's current state.
+    assert session.last_close_code is None
 
     await session.close()
 
