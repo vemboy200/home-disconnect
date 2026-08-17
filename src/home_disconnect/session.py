@@ -531,6 +531,7 @@ class HCSessionReconnect(HCSession):
     """HomeConnect Session with reconnect."""
 
     _reconnect: bool = True
+    _reconnect_task: asyncio.Task[None] | None = None
 
     async def connect(self) -> None:
         """Open Connection with Appliance."""
@@ -543,6 +544,17 @@ class HCSessionReconnect(HCSession):
     async def close(self) -> None:
         """Close connction."""
         self._reconnect = False
+        # Flagging _reconnect = False only stops the loop the *next* time it
+        # checks the flag - if it's currently mid-connect-attempt or asleep
+        # between retries, it won't notice until that finishes on its own,
+        # which can take up to RECONNECT_MAX_DELAY seconds. Cancelling it
+        # directly makes close() return promptly regardless of where the
+        # loop currently is, instead of relying on TaskManager.shutdown()'s
+        # generic wait-then-cancel-after-BLOCK_TIMEOUT fallback.
+        if self._reconnect_task is not None and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._reconnect_task
         await super().close()
 
     async def _reconnect_loop(self) -> None:
@@ -604,6 +616,8 @@ class HCSessionReconnect(HCSession):
                 )
                 if self._reconnect:
                     self._set_connection_state(ConnectionState.RECONNECTING)
-                    self._task_manager.create_background_task(self._reconnect_loop())
+                    self._reconnect_task = self._task_manager.create_background_task(
+                        self._reconnect_loop()
+                    )
                 else:
                     self._set_connection_state(ConnectionState.ABNORMAL_CLOSURE)

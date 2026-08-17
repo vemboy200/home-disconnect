@@ -32,6 +32,10 @@ async def appliance_server() -> AsyncGenerator[
         test_server = TestServer(app, port=port)
         await test_server.start_server()
         appliance.host = test_server.host
+        # Lets a test kill the server outright (not just the one active
+        # websocket) so subsequent connect attempts genuinely fail instead
+        # of the fake server just accepting a fresh connection.
+        appliance.close_server = test_server.close
 
         servers.append(test_server)
         return appliance

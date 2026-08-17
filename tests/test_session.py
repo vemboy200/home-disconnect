@@ -14,6 +14,7 @@ from home_disconnect import (
     HCSessionReconnect,
 )
 from home_disconnect.message import Action, Message
+from home_disconnect.task_manager import TaskManager
 from home_disconnect.testutils import TEST_APP_ID, TEST_APP_NAME
 
 from const import (
@@ -655,4 +656,66 @@ async def test_session_reconnect_auto_handshake(
             call(ConnectionState.CLOSING),
             call(ConnectionState.CLOSED),
         ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_shutdown_during_active_reconnect_is_not_immediate(
+    appliance_server: Callable[..., Awaitable[ApplianceServer]],
+) -> None:
+    """
+    Regression test for homeconnect_local_hass fork issue #30's suspected cause.
+
+    A Home Assistant config entry reload calls HomeAppliance.close(). Before
+    the fix, this called session.close() (which set
+    HCSessionReconnect._reconnect = False, but did NOT cancel the already-
+    running background _reconnect_loop() task) and then
+    TaskManager.shutdown() (which waited for that task to notice the flag
+    and exit on its own, up to BLOCK_TIMEOUT seconds, before force-
+    cancelling it). If the appliance was still unreachable when close() was
+    called, the caller was blocked for whatever was left of the current
+    backoff sleep - confirmed live against a real fake server to take ~4.8s,
+    roughly RECONNECT_INITIAL_DELAY, since close() happens shortly after the
+    first failed retry.
+
+    Fixed by having HCSessionReconnect track its reconnect task and cancel
+    it directly in close(), instead of relying on TaskManager.shutdown()'s
+    generic wait-then-cancel-after-timeout fallback.
+    """
+    appliance = await appliance_server(DEVICE_MESSAGE_SET_1)
+    task_manager = TaskManager()
+
+    session = HCSessionReconnect(
+        appliance.host,
+        app_name=TEST_APP_NAME,
+        app_id=TEST_APP_ID,
+        psk64=None,
+        handshake=False,
+        task_manager=task_manager,
+    )
+
+    await session.connect()
+    assert session.connected
+
+    # Kill the fake server outright so every reconnect attempt genuinely
+    # fails, instead of just closing the one active websocket (which the
+    # fake server would happily re-accept a new connection for).
+    await appliance.close_server()
+
+    await asyncio.sleep(0.2)
+    assert session.connection_state == ConnectionState.RECONNECTING
+
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    # Mirrors HomeAppliance.close(): session.close() first (sets the flag),
+    # then the task manager shutdown that actually waits.
+    await session.close()
+    await task_manager.shutdown()
+    elapsed = loop.time() - start
+
+    assert elapsed < 1, (
+        f"close() took {elapsed:.2f}s to return instead of being near-"
+        "instant - the background reconnect loop wasn't actually cancelled, "
+        "just waited out. This reproduces the suspected #30 freeze "
+        "mechanism (a HA reload blocking on this)."
     )
