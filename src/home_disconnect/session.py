@@ -14,7 +14,12 @@ from Crypto.Random import get_random_bytes
 
 from home_disconnect.task_manager import TaskManager
 
-from .const import DEFAULT_SEND_TIMEOUT, ERROR_CODES
+from .const import (
+    DEFAULT_SEND_TIMEOUT,
+    ERROR_CODES,
+    RECONNECT_INITIAL_DELAY,
+    RECONNECT_MAX_DELAY,
+)
 from .errors import (
     AllreadyConnectedError,
     AuthenticationError,
@@ -61,6 +66,7 @@ class HCSessionBase:
     _logger: logging.Logger
     _connection_state_callback: Callable[[ConnectionState], Awaitable[None]] | None
     _task_manager: TaskManager
+    _last_close_code: int | None = None
 
     def __init__(  # noqa: PLR0913
         self,
@@ -109,6 +115,18 @@ class HCSessionBase:
             and self.connection_state == ConnectionState.CONNECTED
         )
 
+    @property
+    def last_close_code(self) -> int | None:
+        """
+        WebSocket close code from the most recent disconnect, if any.
+
+        Code 1000 (Normal Closure) means the appliance sent a clean
+        "I'm disconnecting" close frame before dropping - e.g. a washer/dryer
+        powering off between cycles - rather than just vanishing off the
+        network. None if the session has never disconnected.
+        """
+        return self._last_close_code
+
     @abstractmethod
     async def _message_handler(self, message: Message) -> None:
         pass
@@ -124,6 +142,14 @@ class HCSessionBase:
         """
         state_change = self.connection_state != new_state
         self.connection_state = new_state
+        if new_state == ConnectionState.CONNECTED:
+            # last_close_code describes the *most recent* disconnect - once a
+            # new connection is actually up, a stale close code from before
+            # this connection no longer describes anything real. Without
+            # this, a session that has ever seen one clean (code 1000) close
+            # would report last_close_code == 1000 forever after, even while
+            # fully connected and receiving live updates.
+            self._last_close_code = None
         if state_change and self._connection_state_callback:
             self._task_manager.create_task(
                 self._wrap_connection_state_callback(new_state)
@@ -149,9 +175,10 @@ class HCSessionBase:
             self._logger.exception("Receive loop Exception")
         finally:
             if self._socket.closed:
+                self._last_close_code = self._socket._websocket.close_code  # noqa: SLF001
                 self._logger.debug(
                     "Socket closed with code %s",
-                    self._socket._websocket.close_code,  # noqa: SLF001
+                    self._last_close_code,
                     exc_info=self._socket._websocket.exception(),  # noqa: SLF001
                 )
                 self._set_connection_state(ConnectionState.ABNORMAL_CLOSURE)
@@ -504,6 +531,7 @@ class HCSessionReconnect(HCSession):
     """HomeConnect Session with reconnect."""
 
     _reconnect: bool = True
+    _reconnect_task: asyncio.Task[None] | None = None
 
     async def connect(self) -> None:
         """Open Connection with Appliance."""
@@ -516,9 +544,21 @@ class HCSessionReconnect(HCSession):
     async def close(self) -> None:
         """Close connction."""
         self._reconnect = False
+        # Flagging _reconnect = False only stops the loop the *next* time it
+        # checks the flag - if it's currently mid-connect-attempt or asleep
+        # between retries, it won't notice until that finishes on its own,
+        # which can take up to RECONNECT_MAX_DELAY seconds. Cancelling it
+        # directly makes close() return promptly regardless of where the
+        # loop currently is, instead of relying on TaskManager.shutdown()'s
+        # generic wait-then-cancel-after-BLOCK_TIMEOUT fallback.
+        if self._reconnect_task is not None and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._reconnect_task
         await super().close()
 
     async def _reconnect_loop(self) -> None:
+        retry_delay = RECONNECT_INITIAL_DELAY
         while self._reconnect:
             try:
                 await self._socket.connect()
@@ -540,6 +580,8 @@ class HCSessionReconnect(HCSession):
 
             except (ConnectionFailedError, aiohttp.ClientError):
                 self._logger.debug("Reconnect failed")
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, RECONNECT_MAX_DELAY)
                 continue
             except HCHandshakeError:
                 self._logger.debug("Reconnect failed")
@@ -566,13 +608,16 @@ class HCSessionReconnect(HCSession):
             self._logger.exception("Receive loop Exception")
         finally:
             if self._socket.closed:
+                self._last_close_code = self._socket._websocket.close_code  # noqa: SLF001
                 self._logger.debug(
                     "Socket closed with code %s",
-                    self._socket._websocket.close_code,  # noqa: SLF001
+                    self._last_close_code,
                     exc_info=self._socket._websocket.exception(),  # noqa: SLF001
                 )
                 if self._reconnect:
                     self._set_connection_state(ConnectionState.RECONNECTING)
-                    self._task_manager.create_background_task(self._reconnect_loop())
+                    self._reconnect_task = self._task_manager.create_background_task(
+                        self._reconnect_loop()
+                    )
                 else:
                     self._set_connection_state(ConnectionState.ABNORMAL_CLOSURE)

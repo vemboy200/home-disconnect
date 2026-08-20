@@ -482,6 +482,7 @@ class Program(AvailableMixin, Entity):
             for option in description["options"]:
                 self._options.append(appliance.entities_uid[option["refUID"]])
         self._execution = Execution(description.get("execution", "selectandstart"))
+        self._full_option_set: bool | None = description.get("fullOptionSet")
 
     async def update(self, values: dict) -> None:
         """Update the entity state and execute callbacks."""
@@ -491,7 +492,7 @@ class Program(AvailableMixin, Entity):
 
     def _build_options(
         self,
-        options: dict[str, str | int | bool] | None = None,
+        options: dict[int, str | int | bool] | None = None,
         *,
         override_options: bool = False,
     ) -> list[dict[str, Any]]:
@@ -511,11 +512,20 @@ class Program(AvailableMixin, Entity):
 
     async def select(
         self,
-        options: dict[str, str | int | bool] | None = None,
+        options: dict[int, str | int | bool] | None = None,
         *,
         override_options: bool = False,
     ) -> None:
-        """Select this Program."""
+        """
+        Select this Program.
+
+        Args:
+        ----
+            options: Option UID -> value, not option name.
+            override_options: Replace the program's existing writable options
+                entirely instead of merging with them.
+
+        """
         message = Message(
             resource="/ro/selectedProgram",
             action=Action.POST,
@@ -530,11 +540,20 @@ class Program(AvailableMixin, Entity):
 
     async def start(
         self,
-        options: dict[str, str | int | bool] | None = None,
+        options: dict[int, str | int | bool] | None = None,
         *,
         override_options: bool = False,
     ) -> None:
-        """Start this Program, select might be required first."""
+        """
+        Start this Program, select might be required first.
+
+        Args:
+        ----
+            options: Option UID -> value, not option name.
+            override_options: Replace the program's existing writable options
+                entirely instead of merging with them.
+
+        """
         message = Message(
             resource="/ro/activeProgram",
             action=Action.POST,
@@ -551,6 +570,21 @@ class Program(AvailableMixin, Entity):
     def execution(self) -> Execution:
         """Execution type."""
         return self._execution
+
+    @property
+    def full_option_set(self) -> bool:
+        """
+        Whether a write for this Program has to carry its complete option set.
+
+        Appliances that set this validate a program write against the program's
+        options and reject anything less - an incomplete set, or an option sent
+        without a value. Device descriptions normally carry the flag on
+        SelectedProgram rather than on the individual programs, so fall back to
+        the appliance-wide value.
+        """
+        if self._full_option_set is None:
+            return self._appliance.full_option_set
+        return self._full_option_set
 
     def dump(self) -> dict:
         """Dump Entity state."""
@@ -569,6 +603,27 @@ class SelectedProgram(AccessMixin, AvailableMixin, Entity):
     """Represents the Selected_Program Entity."""
 
     _available = True
+    _full_option_set: bool = False
+
+    def __init__(
+        self, description: EntityDescription, appliance: HomeAppliance
+    ) -> None:
+        """
+        Selected_Program Entity.
+
+        Args:
+        ----
+            description (EntityDescription): parsed Device description
+            appliance (HomeAppliance): Host
+
+        """
+        super().__init__(description, appliance)
+        self._full_option_set = description.get("fullOptionSet", False)
+
+    @property
+    def full_option_set(self) -> bool:
+        """Whether program writes have to carry the program's complete option set."""
+        return self._full_option_set
 
 
 class ProtectionPort(AccessMixin, AvailableMixin, Entity):

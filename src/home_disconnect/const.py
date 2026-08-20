@@ -7,6 +7,13 @@ DEFAULT_SEND_TIMEOUT: Final[int] = 20
 MAX_CONNECT_TIMEOUT: Final[int] = 60
 TIMEOUT_INCREASE_FACTOR: Final[float] = 1.2
 
+# Bounded exponential backoff for HCSessionReconnect._reconnect_loop() -
+# without this, a failing reconnect (e.g. the appliance is unreachable)
+# retries with no delay at all, hammering the appliance/network dozens of
+# times per second.
+RECONNECT_INITIAL_DELAY: Final[int] = 5  # seconds
+RECONNECT_MAX_DELAY: Final[int] = 60  # seconds
+
 # CID to types mapping for Description Parser
 DESCRIPTION_TYPES: Final = {
     1: "boolean",
