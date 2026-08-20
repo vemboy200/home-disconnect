@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING
 
 import pytest
@@ -9,6 +10,7 @@ from home_disconnect.entities import (
     Program,
 )
 from home_disconnect.message import Action, Message
+from home_disconnect.testutils import DESCRIPTION
 
 if TYPE_CHECKING:
     from home_disconnect.testutils import MockApplianceType
@@ -220,3 +222,43 @@ async def test_start_options_override(
             },
         )
     )
+
+
+@pytest.mark.asyncio
+async def test_full_option_set_off_by_default(
+    mock_homeconnect_appliance: MockApplianceType,
+) -> None:
+    """Test full_option_set is off unless the description asks for it."""
+    appliance = await mock_homeconnect_appliance()
+    entity = Program(EntityDescription(uid=1, name="Test_Program"), appliance)
+
+    assert appliance.full_option_set is False
+    assert entity.full_option_set is False
+
+
+@pytest.mark.asyncio
+async def test_full_option_set_from_selected_program(
+    mock_homeconnect_appliance: MockApplianceType,
+) -> None:
+    """Test full_option_set comes from SelectedProgram, where descriptions carry it."""
+    description = deepcopy(DESCRIPTION)
+    description["selectedProgram"]["fullOptionSet"] = True
+    appliance = await mock_homeconnect_appliance(description)
+    entity = Program(EntityDescription(uid=1, name="Test_Program"), appliance)
+
+    assert appliance.full_option_set is True
+    assert entity.full_option_set is True
+
+
+@pytest.mark.asyncio
+async def test_full_option_set_from_program(
+    mock_homeconnect_appliance: MockApplianceType,
+) -> None:
+    """Test a flag on the Program itself wins over the appliance-wide one."""
+    appliance = await mock_homeconnect_appliance()
+    entity = Program(
+        EntityDescription(uid=1, name="Test_Program", fullOptionSet=True), appliance
+    )
+
+    assert appliance.full_option_set is False
+    assert entity.full_option_set is True
