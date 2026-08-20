@@ -263,6 +263,13 @@ class HomeAppliance:
             else self.entities_uid[self._selected_program.value]
         )
 
+    @property
+    def full_option_set(self) -> bool:
+        """Whether program writes have to carry the program's complete option set."""
+        if self._selected_program is None:
+            return False
+        return self._selected_program.full_option_set
+
     async def _init(self) -> None:
         try:
             async with self.callback_manager:
