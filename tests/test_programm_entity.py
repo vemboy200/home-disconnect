@@ -251,6 +251,41 @@ async def test_full_option_set_from_selected_program(
 
 
 @pytest.mark.asyncio
+async def test_full_option_set_from_active_program(
+    mock_homeconnect_appliance: MockApplianceType,
+) -> None:
+    """Test full_option_set also comes from ActiveProgram, not just SelectedProgram."""
+    description = deepcopy(DESCRIPTION)
+    description["activeProgram"]["fullOptionSet"] = True
+    appliance = await mock_homeconnect_appliance(description)
+    entity = Program(EntityDescription(uid=1, name="Test_Program"), appliance)
+
+    assert appliance.full_option_set is True
+    assert entity.full_option_set is True
+
+
+@pytest.mark.asyncio
+async def test_full_option_set_active_and_selected_program_disagree(
+    mock_homeconnect_appliance: MockApplianceType,
+) -> None:
+    """
+    Test appliance-wide full_option_set is true if either entity says so.
+
+    Confirmed on a real appliance (a Siemens CoffeeMaker) where ActiveProgram
+    flags fullOptionSet but SelectedProgram doesn't - writes to /ro/activeProgram
+    still need the complete set even though SelectedProgram alone would say no.
+    """
+    description = deepcopy(DESCRIPTION)
+    description["activeProgram"]["fullOptionSet"] = True
+    description["selectedProgram"]["fullOptionSet"] = False
+    appliance = await mock_homeconnect_appliance(description)
+    entity = Program(EntityDescription(uid=1, name="Test_Program"), appliance)
+
+    assert appliance.full_option_set is True
+    assert entity.full_option_set is True
+
+
+@pytest.mark.asyncio
 async def test_full_option_set_from_program(
     mock_homeconnect_appliance: MockApplianceType,
 ) -> None:

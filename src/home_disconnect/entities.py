@@ -597,6 +597,27 @@ class ActiveProgram(AccessMixin, AvailableMixin, Entity):
     """Represents the Active_Program Entity."""
 
     _available = True
+    _full_option_set: bool = False
+
+    def __init__(
+        self, description: EntityDescription, appliance: HomeAppliance
+    ) -> None:
+        """
+        Active_Program Entity.
+
+        Args:
+        ----
+            description (EntityDescription): parsed Device description
+            appliance (HomeAppliance): Host
+
+        """
+        super().__init__(description, appliance)
+        self._full_option_set = description.get("fullOptionSet", False)
+
+    @property
+    def full_option_set(self) -> bool:
+        """Whether program writes have to carry the program's complete option set."""
+        return self._full_option_set
 
 
 class SelectedProgram(AccessMixin, AvailableMixin, Entity):

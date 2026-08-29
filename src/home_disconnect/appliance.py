@@ -265,10 +265,19 @@ class HomeAppliance:
 
     @property
     def full_option_set(self) -> bool:
-        """Whether program writes have to carry the program's complete option set."""
-        if self._selected_program is None:
-            return False
-        return self._selected_program.full_option_set
+        """
+        Whether program writes have to carry the program's complete option set.
+
+        SelectedProgram and ActiveProgram can each declare this independently -
+        a device description that flags it on one but not the other (confirmed
+        on a real appliance where ActiveProgram does and SelectedProgram
+        doesn't) still needs the full set on whichever resource is written to,
+        so this is true if either one says so.
+        """
+        return (
+            self._selected_program is not None
+            and self._selected_program.full_option_set
+        ) or (self._active_program is not None and self._active_program.full_option_set)
 
     async def _init(self) -> None:
         try:
