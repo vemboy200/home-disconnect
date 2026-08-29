@@ -11,6 +11,7 @@ class Action(StrEnum):
 
     GET = "GET"
     POST = "POST"
+    DELETE = "DELETE"
     RESPONSE = "RESPONSE"
     NOTIFY = "NOTIFY"
 
