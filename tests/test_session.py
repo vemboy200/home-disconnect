@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from typing import TYPE_CHECKING
 from unittest.mock import ANY, AsyncMock, call
 
@@ -199,6 +200,37 @@ async def test_session_handshake_1(
 
     assert appliance.messages[4] == Message(
         sid=10, msg_id=33, resource="/ni/info", version=1, action=Action.GET
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_handshake_ni_info_error(
+    appliance_server: Callable[..., Awaitable[ApplianceServer]],
+) -> None:
+    """Test Session Handshake completes even if /ni/info errors out."""
+    message_set = deepcopy(DEVICE_MESSAGE_SET_1)
+    del message_set["responses"]["/ni/info"]
+    appliance = await appliance_server(message_set)
+    connection_callback = AsyncMock()
+    session = HCSession(
+        appliance.host,
+        app_name=TEST_APP_NAME,
+        app_id=TEST_APP_ID,
+        psk64=None,
+        connection_state_callback=connection_callback,
+    )
+
+    await session.connect()
+    await session.close()
+
+    connection_callback.assert_has_awaits(
+        [
+            call(ConnectionState.CONNECTING),
+            call(ConnectionState.HANDSHAKE),
+            call(ConnectionState.CONNECTED),
+            call(ConnectionState.CLOSING),
+            call(ConnectionState.CLOSED),
+        ]
     )
 
 
