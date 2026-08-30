@@ -19,6 +19,31 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
 
+def test_tls_socket_url_ipv4() -> None:
+    """Test IPv4 hosts are used as-is."""
+    socket = TlsSocket("192.168.0.10", TEST_PSK64)
+    assert socket._url == "wss://192.168.0.10:443/homeconnect"
+
+
+def test_tls_socket_url_ipv6_gets_bracketed() -> None:
+    """
+    Test IPv6 hosts are wrapped in brackets before building the URL.
+
+    An unbracketed IPv6 address in a ws(s):// URL is ambiguous - its own
+    colons get parsed as the host/port separator, which is exactly the
+    crash reported on upstream issues 59/65 (yarl trying to int() a chunk
+    of the address itself as a port number).
+    """
+    socket = TlsSocket("2001:db8::1", TEST_PSK64)
+    assert socket._url == "wss://[2001:db8::1]:443/homeconnect"
+
+
+def test_aes_socket_url_ipv6_gets_bracketed() -> None:
+    """Test the AES socket brackets IPv6 hosts the same way the TLS one does."""
+    socket = AesSocket("2001:db8::1", TEST_PSK64, TEST_IV64)
+    assert socket._url == "ws://[2001:db8::1]:80/homeconnect"
+
+
 @pytest.mark.asyncio
 async def test_connect_tls(
     appliance_server_tls: Callable[..., Awaitable[ApplianceServer]],
