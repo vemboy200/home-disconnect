@@ -1,0 +1,19 @@
+name: Lint
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7.0.1
+    - uses: astral-sh/setup-uv@v10.0.1
+      with:
+          enable-cache: true
+    - parallel:
+          - run: uv run ruff format --diff src/
+          - run: uv run ruff format --diff tests/
+          - run: uv run ruff check src/
+          - run: uv run ruff check tests/
