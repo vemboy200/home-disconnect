@@ -10,6 +10,7 @@ from aiohttp import WSMessage, WSMsgType
 from Crypto.Random import get_random_bytes
 from home_disconnect import AuthenticationError
 from home_disconnect.hc_socket import AesSocket, TlsSocket
+from home_disconnect.hc_socket import _make_url as make_url
 from home_disconnect.testutils import TEST_IV64, TEST_PSK64
 
 from const import CLIENT_MESSAGE_ID, DEVICE_MESSAGE_SET_1, SERVER_MESSAGE_ID, SESSION_ID
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 def test_tls_socket_url_ipv4() -> None:
     """Test IPv4 hosts are used as-is."""
     socket = TlsSocket("192.168.0.10", TEST_PSK64)
-    assert socket._url == "wss://192.168.0.10:443/homeconnect"
+    assert str(socket._url) == "wss://192.168.0.10/homeconnect"
 
 
 def test_tls_socket_url_ipv6_gets_bracketed() -> None:
@@ -35,13 +36,13 @@ def test_tls_socket_url_ipv6_gets_bracketed() -> None:
     of the address itself as a port number).
     """
     socket = TlsSocket("2001:db8::1", TEST_PSK64)
-    assert socket._url == "wss://[2001:db8::1]:443/homeconnect"
+    assert str(socket._url) == "wss://[2001:db8::1]/homeconnect"
 
 
 def test_aes_socket_url_ipv6_gets_bracketed() -> None:
     """Test the AES socket brackets IPv6 hosts the same way the TLS one does."""
     socket = AesSocket("2001:db8::1", TEST_PSK64, TEST_IV64)
-    assert socket._url == "ws://[2001:db8::1]:80/homeconnect"
+    assert str(socket._url) == "ws://[2001:db8::1]/homeconnect"
 
 
 @pytest.mark.asyncio
@@ -140,7 +141,7 @@ async def test_ase_padding_error() -> None:
     """Test AES Socket with padding error."""
     encryption = AesServerEncryption(psk64=TEST_PSK64, iv64=TEST_IV64)
 
-    socket = AesSocket("", psk64=TEST_PSK64, iv64=TEST_IV64)
+    socket = AesSocket("localhost", psk64=TEST_PSK64, iv64=TEST_IV64)
     socket._session = AsyncMock()
     await socket.connect()
 
@@ -163,7 +164,7 @@ async def test_ase_wrong_msg_type() -> None:
     """Test AES Socket with Message not of type binary."""
     psk64 = urlsafe_b64encode(get_random_bytes(32)).decode()
     iv64 = urlsafe_b64encode(get_random_bytes(16)).decode()
-    socket = AesSocket("", psk64=psk64, iv64=iv64)
+    socket = AesSocket("localhost", psk64=psk64, iv64=iv64)
 
     msg = WSMessage(type=WSMsgType.PING, data=None, extra=None)
     with pytest.raises(ValueError, match="Message not of Type binary"):
@@ -178,7 +179,7 @@ async def test_ase_msg_to_short() -> None:
 
     msg_data = encryption.encrypt(get_random_bytes(2))
 
-    socket = AesSocket("", psk64=TEST_PSK64, iv64=TEST_IV64)
+    socket = AesSocket("localhost", psk64=TEST_PSK64, iv64=TEST_IV64)
     socket._session = AsyncMock()
     await socket.connect()
 
@@ -196,7 +197,7 @@ async def test_ase_msg_unaligned() -> None:
     msg_data = encryption.encrypt(get_random_bytes(32))
     msg = WSMessage(type=WSMsgType.BINARY, data=msg_data[:-1], extra=None)
 
-    socket = AesSocket("", psk64=TEST_PSK64, iv64=TEST_IV64)
+    socket = AesSocket("localhost", psk64=TEST_PSK64, iv64=TEST_IV64)
     socket._session = AsyncMock()
     await socket.connect()
 
@@ -210,7 +211,7 @@ async def test_ase_hmac_failure() -> None:
     encryption = AesServerEncryption(psk64=TEST_PSK64, iv64=TEST_IV64)
     encryption.reset()
 
-    socket = AesSocket("", psk64=TEST_PSK64, iv64=TEST_IV64)
+    socket = AesSocket("localhost", psk64=TEST_PSK64, iv64=TEST_IV64)
     socket._session = AsyncMock()
     await socket.connect()
 
@@ -220,3 +221,39 @@ async def test_ase_hmac_failure() -> None:
     msg = WSMessage(type=WSMsgType.BINARY, data=msg_data, extra=None)
     with pytest.raises(AuthenticationError, match="HMAC Failure"):
         await socket._receive(msg)
+
+
+def test_make_url() -> None:
+    """Test URl generation."""
+    assert str(make_url("192.168.1.10", ssl=False)) == "ws://192.168.1.10/homeconnect"
+    assert str(make_url("192.168.1.10", ssl=True)) == "wss://192.168.1.10/homeconnect"
+
+    assert str(make_url("hostname", ssl=False)) == "ws://hostname/homeconnect"
+    assert str(make_url("hostname", ssl=True)) == "wss://hostname/homeconnect"
+
+    assert (
+        str(make_url("FDCB:C499:4CCD:0:9627:70FF:FEDB:117D", ssl=False))
+        == "ws://[fdcb:c499:4ccd:0:9627:70ff:fedb:117d]/homeconnect"
+    )
+    assert (
+        str(make_url("FDCB:C499:4CCD:0:9627:70FF:FEDB:117D", ssl=True))
+        == "wss://[fdcb:c499:4ccd:0:9627:70ff:fedb:117d]/homeconnect"
+    )
+
+    assert (
+        str(make_url("FDCB:C499:4CCD:0:9627:70FF:FEDB:117d", ssl=False))
+        == "ws://[fdcb:c499:4ccd:0:9627:70ff:fedb:117d]/homeconnect"
+    )
+    assert (
+        str(make_url("FDCB:C499:4CCD:0:9627:70FF:FEDB:117d", ssl=True))
+        == "wss://[fdcb:c499:4ccd:0:9627:70ff:fedb:117d]/homeconnect"
+    )
+
+    assert (
+        str(make_url("FE80::9627:70FF:FEDB:117D%eth0", ssl=False))
+        == "ws://[fe80::9627:70ff:fedb:117d%eth0]/homeconnect"
+    )
+    assert (
+        str(make_url("FE80::9627:70FF:FEDB:117D%eth0", ssl=True))
+        == "wss://[fe80::9627:70ff:fedb:117d%eth0]/homeconnect"
+    )
