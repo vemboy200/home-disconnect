@@ -24,7 +24,7 @@ Issues = "https://github.com/vemboy200/home-disconnect/issues"
 hc-parser = "home_disconnect:description_parser.main"
 
 [dependency-groups]
-dev = [{ include-group = "lint" }, { include-group = "test" }, "prek==0.5.2"]
+dev = [{ include-group = "lint" }, { include-group = "test" }, "prek==0.5.3"]
 
 lint = ["ruff==0.16.7"]
 test = ["pytest>=8.3.0", "pytest-asyncio>=0.24.0", "pytest-cov>=5.0.0", "coverage>=7.6.0"]
