@@ -176,7 +176,11 @@ class HCSessionBase:
         except Exception:
             self._logger.exception("Receive loop Exception")
         finally:
-            if not cancelled:
+            if not cancelled and self.connection_state not in (
+                ConnectionState.CLOSING,
+                ConnectionState.CLOSED,
+            ):
+                # Not a deliberate close(): the connection died under us.
                 await self._close_half_closed_socket()
             if self._socket.closed:
                 self._last_close_code = self._socket._websocket.close_code  # noqa: SLF001
