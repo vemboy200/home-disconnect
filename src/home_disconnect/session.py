@@ -163,6 +163,7 @@ class HCSessionBase:
             self._logger.exception("Exception in connection state callback")
 
     async def _wrap_recv_loop(self) -> None:
+        cancelled = False
         try:
             await self._recv_loop()
         except (aiohttp.ClientConnectionError, aiohttp.ServerTimeoutError) as exc:
@@ -170,10 +171,17 @@ class HCSessionBase:
             raise ConnectionFailedError from exc
         except asyncio.CancelledError:
             self._logger.debug("Receive loop cancelled")
+            cancelled = True
             raise
         except Exception:
             self._logger.exception("Receive loop Exception")
         finally:
+            if not cancelled and self.connection_state not in (
+                ConnectionState.CLOSING,
+                ConnectionState.CLOSED,
+            ):
+                # Not a deliberate close(): the connection died under us.
+                await self._close_half_closed_socket()
             if self._socket.closed:
                 self._last_close_code = self._socket._websocket.close_code  # noqa: SLF001
                 self._logger.debug(
@@ -182,6 +190,24 @@ class HCSessionBase:
                     exc_info=self._socket._websocket.exception(),  # noqa: SLF001
                 )
                 self._set_connection_state(ConnectionState.ABNORMAL_CLOSURE)
+
+    async def _close_half_closed_socket(self) -> None:
+        """
+        Finish closing a websocket the receive loop gave up on.
+
+        The loop can end on a connection that's closing but not closed yet: after
+        the host slept, the appliance may already have dropped us, and aiohttp's
+        next write (e.g. its automatic pong) fails with "Cannot write to closing
+        transport". Only a closed socket triggers the state change below, so
+        without this the session stays CONNECTED forever and never reconnects.
+        """
+        websocket = getattr(self._socket, "_websocket", None)
+        if websocket is None or websocket.closed:
+            return
+        try:
+            await websocket.close()
+        except (aiohttp.ClientError, ConnectionError, OSError) as exc:
+            self._logger.debug("Error closing half-closed socket: %s", exc)
 
     async def _recv_loop(self) -> None:
         self._logger.debug("Starting receive loop")
@@ -608,6 +634,8 @@ class HCSessionReconnect(HCSession):
         except Exception:
             self._logger.exception("Receive loop Exception")
         finally:
+            if self._reconnect:
+                await self._close_half_closed_socket()
             if self._socket.closed:
                 self._last_close_code = self._socket._websocket.close_code  # noqa: SLF001
                 self._logger.debug(
