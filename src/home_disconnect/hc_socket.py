@@ -14,6 +14,9 @@ from Crypto.Random import get_random_bytes
 
 from .errors import AuthenticationError
 
+# Pong must arrive within half this; idle appliances miss a 10 s window.
+DEFAULT_HEARTBEAT = 60.0
+
 
 def _make_url(host: str, *, ssl: bool) -> yarl.URL:
     if ssl:
@@ -33,6 +36,8 @@ class HCSocket:
         host: str,
         session: aiohttp.ClientSession | None = None,
         logger: logging.Logger | None = None,
+        *,
+        heartbeat: float | None = DEFAULT_HEARTBEAT,
     ) -> None:
         """
         Initialize.
@@ -42,9 +47,11 @@ class HCSocket:
         host (str): Host
         session (Optional[aiohttp.ClientSession]): ClientSession
         logger (Optional[Logger]): Logger
+        heartbeat (Optional[float]): Ping interval in seconds, None disables
 
         """
         self._url = _make_url(host, ssl=False)
+        self._heartbeat = heartbeat
 
         self._session = session
         if self._session is None:
@@ -68,7 +75,9 @@ class HCSocket:
         if self._owned_session and self._session is None:
             self._session = aiohttp.ClientSession()
 
-        return await self._session.ws_connect(self._url, *args, heartbeat=20, **kwargs)
+        return await self._session.ws_connect(
+            self._url, *args, heartbeat=self._heartbeat, **kwargs
+        )
 
     @abstractmethod
     async def send(self, message: str) -> None:
@@ -124,6 +133,8 @@ class TlsSocket(HCSocket):
         psk64: str,
         session: aiohttp.ClientSession | None = None,
         logger: logging.Logger | None = None,
+        *,
+        heartbeat: float | None = DEFAULT_HEARTBEAT,
     ) -> None:
         """
         TLS Socket.
@@ -134,6 +145,7 @@ class TlsSocket(HCSocket):
         psk64 (str): psk64 key
         session (Optional[aiohttp.ClientSession]): ClientSession
         logger (Optional[Logger]): Logger
+        heartbeat (Optional[float]): Ping interval in seconds, None disables
 
         """
         # setup sslcontext
@@ -144,7 +156,7 @@ class TlsSocket(HCSocket):
         self._ssl_context.check_hostname = False
         self._ssl_context.verify_mode = ssl.CERT_NONE
         self._ssl_context.set_psk_client_callback(lambda _: (None, psk))
-        super().__init__(host, session, logger)
+        super().__init__(host, session, logger, heartbeat=heartbeat)
         self._url = _make_url(host, ssl=True)
 
     async def connect(self) -> None:
@@ -186,6 +198,8 @@ class AesSocket(HCSocket):
         iv64: str,
         session: aiohttp.ClientSession | None = None,
         logger: logging.Logger | None = None,
+        *,
+        heartbeat: float | None = DEFAULT_HEARTBEAT,
     ) -> None:
         """
         AES Socket.
@@ -197,6 +211,7 @@ class AesSocket(HCSocket):
             iv64 (str): iv64
             session (Optional[aiohttp.ClientSession]): ClientSession
             logger (Optional[Logger]): Logger
+            heartbeat (Optional[float]): Ping interval in seconds, None disables
 
         """
         psk = urlsafe_b64decode(psk64 + "===")
@@ -204,7 +219,7 @@ class AesSocket(HCSocket):
         self._enckey = hmac.digest(psk, b"ENC", digest="sha256")
         self._mackey = hmac.digest(psk, b"MAC", digest="sha256")
 
-        super().__init__(host, session, logger)
+        super().__init__(host, session, logger, heartbeat=heartbeat)
         self._url = _make_url(host, ssl=False)
 
     async def connect(self) -> None:

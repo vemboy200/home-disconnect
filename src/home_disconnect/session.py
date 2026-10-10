@@ -29,7 +29,7 @@ from .errors import (
     HCHandshakeError,
     NotConnectedError,
 )
-from .hc_socket import AesSocket, HCSocket, TlsSocket
+from .hc_socket import DEFAULT_HEARTBEAT, AesSocket, HCSocket, TlsSocket
 from .message import Action, Message, load_message
 
 if TYPE_CHECKING:
@@ -79,6 +79,7 @@ class HCSessionBase:
         connection_state_callback: Callable[[ConnectionState], Awaitable[None]]
         | None = None,
         task_manager: TaskManager | None = None,
+        heartbeat: float | None = DEFAULT_HEARTBEAT,
     ) -> None:
         """HomeConnect Session Baseclass."""
         self._host = host
@@ -98,14 +99,23 @@ class HCSessionBase:
         if self._iv64:
             self._logger.debug("Got iv64, using AES socket")
             self._socket = AesSocket(
-                self._host, self._psk64, self._iv64, aiohttp_session, logger
+                self._host,
+                self._psk64,
+                self._iv64,
+                aiohttp_session,
+                logger,
+                heartbeat=heartbeat,
             )
         elif self._psk64:
             self._logger.debug("No iv64, using TLS socket")
-            self._socket = TlsSocket(self._host, self._psk64, aiohttp_session, logger)
+            self._socket = TlsSocket(
+                self._host, self._psk64, aiohttp_session, logger, heartbeat=heartbeat
+            )
         else:  # For Testing
             self._logger.warning("Using unencrypted socket")
-            self._socket = HCSocket(self._host, aiohttp_session, logger)
+            self._socket = HCSocket(
+                self._host, aiohttp_session, logger, heartbeat=heartbeat
+            )
 
     @property
     def connected(self) -> bool:
@@ -248,6 +258,7 @@ class HCSession(HCSessionBase):
         connection_state_callback: Callable[[ConnectionState], Awaitable[None]]
         | None = None,
         task_manager: TaskManager | None = None,
+        heartbeat: float | None = DEFAULT_HEARTBEAT,
     ) -> None:
         """
         HomeConnect Session.
@@ -265,6 +276,7 @@ class HCSession(HCSessionBase):
         handshake (bool): Automatic Handshake
         connection_state_callback (Optional[Callable[[ConnectionState], Awaitable[None]]]): Called when connection state changes
         task_manager (Optional[TaskManager]): Task manager
+        heartbeat (Optional[float]): WebSocket heartbeat interval in seconds, None disables
 
         """  # noqa: E501
         super().__init__(
@@ -275,6 +287,7 @@ class HCSession(HCSessionBase):
             logger=logger,
             connection_state_callback=connection_state_callback,
             task_manager=task_manager,
+            heartbeat=heartbeat,
         )
         self._app_name = app_name
         self._app_id = app_id
