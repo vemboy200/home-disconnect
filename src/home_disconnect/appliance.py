@@ -18,6 +18,7 @@ from .entities import (
     Setting,
     Status,
 )
+from .hc_socket import DEFAULT_HEARTBEAT
 from .message import Action, Message
 from .session import ConnectionState, HCSession, HCSessionReconnect
 from .task_manager import TaskManager
@@ -76,6 +77,7 @@ class HomeAppliance:
         logger: logging.Logger | None = None,
         reconect: bool = True,
         connection_callback: Callable[[ConnectionState], Awaitable[None]] | None = None,
+        heartbeat: float | None = DEFAULT_HEARTBEAT,
     ) -> None:
         """
         HomeConnect Appliance.
@@ -92,6 +94,7 @@ class HomeAppliance:
             logger (Optional[Logger]): Logger
             reconect (bool): Automatic Reconect
             connection_callback (Optional[Callable[[ConnectionState], Awaitable[None]]]): Called when connection state changes
+            heartbeat (Optional[float]): WebSocket heartbeat interval in seconds, None disables
 
         """  # noqa: E501
         if logger is None:
@@ -113,6 +116,7 @@ class HomeAppliance:
                 logger=logger,
                 connection_state_callback=self._connection_callback,
                 task_manager=self._task_manager,
+                heartbeat=heartbeat,
             )
         else:
             self.session = HCSession(
@@ -126,6 +130,7 @@ class HomeAppliance:
                 logger=logger,
                 connection_state_callback=self._connection_callback,
                 task_manager=self._task_manager,
+                heartbeat=heartbeat,
             )
         self.info = description.get("info", {})
         self.callback_manager = CallbackManager(self._task_manager, self._logger)

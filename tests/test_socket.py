@@ -3,14 +3,15 @@ from __future__ import annotations
 import json
 from base64 import urlsafe_b64encode
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aiohttp import WSMessage, WSMsgType
 from Crypto.Random import get_random_bytes
 from home_disconnect import AuthenticationError
-from home_disconnect.hc_socket import AesSocket, TlsSocket
+from home_disconnect.hc_socket import DEFAULT_HEARTBEAT, AesSocket, TlsSocket
 from home_disconnect.hc_socket import _make_url as make_url
+from home_disconnect.session import HCSession
 from home_disconnect.testutils import TEST_IV64, TEST_PSK64
 
 from const import CLIENT_MESSAGE_ID, DEVICE_MESSAGE_SET_1, SERVER_MESSAGE_ID, SESSION_ID
@@ -257,3 +258,33 @@ def test_make_url() -> None:
         str(make_url("FE80::9627:70FF:FEDB:117D%eth0", ssl=True))
         == "wss://[fe80::9627:70ff:fedb:117d%eth0]/homeconnect"
     )
+
+
+@pytest.mark.asyncio
+async def test_ws_connect_default_heartbeat() -> None:
+    """Test the default heartbeat is passed to aiohttp."""
+    session = MagicMock()
+    session.ws_connect = AsyncMock()
+    socket = TlsSocket("192.168.0.10", TEST_PSK64, session)
+    await socket.connect()
+    assert session.ws_connect.call_args.kwargs["heartbeat"] == DEFAULT_HEARTBEAT
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("heartbeat", [30.0, None])
+async def test_ws_connect_custom_heartbeat(heartbeat: float | None) -> None:
+    """Test a custom heartbeat is passed to aiohttp."""
+    session = MagicMock()
+    session.ws_connect = AsyncMock()
+    socket = TlsSocket("192.168.0.10", TEST_PSK64, session, heartbeat=heartbeat)
+    await socket.connect()
+    assert session.ws_connect.call_args.kwargs["heartbeat"] == heartbeat
+
+
+@pytest.mark.asyncio
+async def test_session_passes_heartbeat_to_socket() -> None:
+    """Test the session forwards heartbeat to its socket."""
+    session = HCSession(
+        "192.168.0.10", "app", "app-id", TEST_PSK64, TEST_IV64, heartbeat=45.0
+    )
+    assert session._socket._heartbeat == 45.0
