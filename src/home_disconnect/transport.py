@@ -37,6 +37,11 @@ PSK_IDENTITY = "HCCOM_Local_App"
 WEBSOCKET_PATH = "/homeconnect"
 TLS_PORT = 443
 AES_PORT = 80
+# aiohttp pings every `heartbeat` seconds and closes the socket (code 1006) when no pong comes
+# back within half that time. Idle ovens and hobs answer late every few minutes on a healthy
+# link, so 20 s dropped them again and again. 60 s leaves a 30 s window for the pong and still
+# notices a dead link within 90 s.
+DEFAULT_HEARTBEAT = 60.0
 
 
 def _reason(err: BaseException) -> str:
@@ -88,12 +93,12 @@ class Transport:
         iv64: str | None = None,
         *,
         port: int | None = None,
-        heartbeat: float | None = 20,
+        heartbeat: float | None = DEFAULT_HEARTBEAT,
     ) -> None:
         """Pick the scheme from the profile: an IV means AES, no IV means TLS-PSK.
 
-        `heartbeat` is the WebSocket ping interval in seconds; the connection closes when a
-        ping goes unanswered. `None` turns it off.
+        `heartbeat` is the WebSocket ping interval in seconds (`DEFAULT_HEARTBEAT`); the
+        connection closes when a ping goes unanswered for half that time. `None` turns it off.
         """
         self._session = session
         self._heartbeat = heartbeat

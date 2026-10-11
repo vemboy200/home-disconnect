@@ -20,6 +20,7 @@ from .entities import AccessError, Entities, Execution
 from .errors import AlreadyConnectedError, HomeDisconnectError
 from .messages import Action, Message, ResponseError
 from .session import ConnectionState, Session
+from .transport import DEFAULT_HEARTBEAT
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, Mapping
@@ -72,10 +73,12 @@ class Appliance:
         on_connection_state: ConnectionCallback | None = None,
         reconnect: bool = True,
         port: int | None = None,
+        heartbeat: float | None = DEFAULT_HEARTBEAT,
         info: dict[str, Any] | None = None,
     ) -> None:
         """Set up the appliance. Nothing connects until `connect()`.
 
+        `heartbeat` is the WebSocket ping interval in seconds; `None` turns it off.
         `info` seeds `self.info` (e.g. values stored from an earlier connection); the
         appliance's `/ci/info` or `/iz/info` answer updates it on every connect.
         """
@@ -91,6 +94,7 @@ class Appliance:
             on_state_change=self._on_session_state,
             reconnect=reconnect,
             port=port,
+            heartbeat=heartbeat,
         )
         self.entities = Entities(profile, self.session.request)
         self._on_connection_state = on_connection_state

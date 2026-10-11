@@ -84,6 +84,8 @@ await appliance.close()
 
 `connect()` runs the handshake and then reads the appliance's full state before it returns. It raises if any of that fails, and leaves nothing connected in that case. Wrap it in `asyncio.timeout()` to bound how long it may take.
 
+The connection pings the appliance every 60 seconds and treats a ping that goes unanswered for half that time as a dropped link. Pass `heartbeat=` (seconds, or `None` for no pings) to `Appliance` to change it.
+
 `appliance.info` holds what the appliance reports about itself (`deviceID`, `vib`, `eNumber`, `swVersion`, ...), updated on every connect.
 
 ## Reading values
