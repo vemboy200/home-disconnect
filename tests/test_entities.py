@@ -418,3 +418,52 @@ def test_events_are_readable_by_default(entities: Entities) -> None:
     assert salt.access is Access.READ
     salt.update({"access": "none"})
     assert entities[SALT].access is Access.NONE  # a fresh lookup: mypy keeps the narrowing above
+
+
+GROUPS_DESCRIPTION = """<?xml version="1.0" encoding="UTF-8"?>
+<device xmlns="http://www.home-connect.com/schemas/DeviceDescription/20140417">
+  <description><type>Oven</type><brand>TEST</brand><model>OV1</model></description>
+  <statusList access="read" available="true" uid="0102">
+    <status access="read" available="true" refCID="10" refDID="82" uid="0301"/>
+    <status access="read" available="true" refCID="10" refDID="82" uid="0302"/>
+    <status access="read" available="true" refCID="10" refDID="82" uid="0303"/>
+    <status access="read" available="true" refCID="10" refDID="82" uid="0304"/>
+  </statusList>
+  <programGroup available="true" uid="0107">
+    <program available="true" execution="selectAndStart" uid="2001"/>
+    <program available="true" execution="selectAndStart" uid="2002"/>
+  </programGroup>
+</device>
+"""
+
+GROUPS_FEATURE_MAPPING = """<?xml version="1.0" encoding="UTF-8"?>
+<featureMappingFile xmlns="http://www.home-connect.com/schemas/FeatureMapping/20140417">
+  <featureDescription>
+    <feature refUID="0301">Cooking.Oven.Status.Cavity.002.CurrentTemperature</feature>
+    <feature refUID="0302">Cooking.Oven.Status.Cavity.001.CurrentTemperature</feature>
+    <feature refUID="0303">Cooking.Oven.Status.Cavity.001.DoorState</feature>
+    <feature refUID="0304">Cooking.Oven.Status.Cavity.Selector</feature>
+    <feature refUID="2001">BSH.Common.Program.Favorite.001</feature>
+    <feature refUID="2002">Cooking.Oven.Program.HeatingMode.HotAir</feature>
+  </featureDescription>
+</featureMappingFile>
+"""
+
+
+@pytest.fixture
+def groups(recorder: Recorder) -> Entities:
+    return Entities(parse_profile(GROUPS_DESCRIPTION, GROUPS_FEATURE_MAPPING), recorder)
+
+
+def test_group_ids_lists_numbered_groups_sorted(groups: Entities) -> None:
+    # Each cavity counts once, in order, and the non-numbered Selector isn't a group.
+    assert groups.group_ids("Cooking.Oven.Status.Cavity") == ["001", "002"]
+
+
+def test_group_ids_includes_programs(groups: Entities) -> None:
+    assert groups.group_ids("BSH.Common.Program.Favorite") == ["001"]
+
+
+@pytest.mark.parametrize("prefix", ["Cooking.Oven.Setting.Cavity", "Cooking.Oven.Status.Cav"])
+def test_group_ids_needs_the_whole_prefix(groups: Entities, prefix: str) -> None:
+    assert groups.group_ids(prefix) == []
