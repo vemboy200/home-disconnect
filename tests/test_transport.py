@@ -18,7 +18,7 @@ from home_disconnect.errors import (
     ConnectionFailedError,
     DecryptionError,
 )
-from home_disconnect.transport import PSK_IDENTITY, Transport
+from home_disconnect.transport import DEFAULT_HEARTBEAT, PSK_IDENTITY, Transport
 
 PSK = bytes(range(32))
 IV = bytes(range(16, 32))
@@ -275,3 +275,39 @@ async def test_connect_errors_are_described_briefly(
         await transport.connect()
     assert str(raised.value) == f"Can't connect to {transport.url}: {reason}"
     assert raised.value.__cause__ is error
+
+
+async def connect_capturing_heartbeat(
+    session: aiohttp.ClientSession, monkeypatch: pytest.MonkeyPatch, transport: Transport
+) -> object:
+    """Connect with a stubbed ws_connect and return the heartbeat it was given."""
+    seen: dict[str, object] = {}
+
+    async def fake_ws_connect(*_args: object, **ws_kwargs: object) -> None:
+        seen.update(ws_kwargs)
+        raise OSError(errno.ECONNREFUSED, "Connect call failed")
+
+    monkeypatch.setattr(session, "ws_connect", fake_ws_connect)
+    with pytest.raises(ConnectionFailedError):
+        await transport.connect()
+    return seen["heartbeat"]
+
+
+def test_default_heartbeat_gives_the_pong_a_generous_window() -> None:
+    # aiohttp closes the socket when no pong arrives within half the interval.
+    assert DEFAULT_HEARTBEAT == 60  # noqa: PLR2004
+
+
+async def test_heartbeat_defaults_to_the_constant(
+    session: aiohttp.ClientSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transport = Transport(session, "appliance.local", PSK64, IV64)
+    assert await connect_capturing_heartbeat(session, monkeypatch, transport) == DEFAULT_HEARTBEAT
+
+
+@pytest.mark.parametrize("heartbeat", [5.0, None])
+async def test_heartbeat_can_be_overridden_or_turned_off(
+    session: aiohttp.ClientSession, monkeypatch: pytest.MonkeyPatch, heartbeat: float | None
+) -> None:
+    transport = Transport(session, "appliance.local", PSK64, IV64, heartbeat=heartbeat)
+    assert await connect_capturing_heartbeat(session, monkeypatch, transport) == heartbeat
