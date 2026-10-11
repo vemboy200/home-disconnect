@@ -16,7 +16,7 @@ import contextlib
 import os
 import socket
 import ssl
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import aiohttp
 from yarl import URL
@@ -55,6 +55,21 @@ def _reason(err: BaseException) -> str:
     if isinstance(cause, OSError) and cause.errno is not None:
         return os.strerror(cause.errno).lower()
     return "the connection failed"
+
+
+def appliance_hostname(
+    connection_type: Literal["AES", "TLS"], ha_id: str, brand: str, appliance_type: str
+) -> str:
+    """Return the host name an appliance announces over mDNS, without `.local`.
+
+    TLS appliances use `{brand}-{type}-{haId}`, AES appliances their `haId` alone. Whether it
+    resolves is up to the network: the operating system needs mDNS support, or a router that
+    puts DHCP host names in its DNS. Resolving it through an mDNS library, or using the address
+    from the appliance's announcement, is more reliable.
+    """
+    if connection_type == "TLS":
+        return f"{brand}-{appliance_type}-{ha_id}"
+    return ha_id
 
 
 def create_psk_ssl_context(psk: bytes) -> ssl.SSLContext:

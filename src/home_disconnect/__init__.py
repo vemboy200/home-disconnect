@@ -39,6 +39,7 @@ from .profile_files import (
     profile_filename_stub,
 )
 from .session import ConnectionState, HandshakeError, Session
+from .transport import appliance_hostname
 
 try:
     __version__ = version("home-disconnect")
@@ -80,6 +81,7 @@ __all__ = [
     "Status",
     "Token",
     "__version__",
+    "appliance_hostname",
     "build_profile_zip",
     "fetch_profiles",
     "load_profiles",
