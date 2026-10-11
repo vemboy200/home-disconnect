@@ -80,7 +80,7 @@ Things to know before you turn it off:
 - **Software updates** come from BSH's servers, so turn it back on now and then to get them.
 - **Pairing a new appliance** still needs the cloud: the app pairs it, and its profile with the local key is stored in your Home Connect account. Once it's paired, the order doesn't matter: turning the cloud connection off doesn't remove the profile, so it can still be downloaded from the account afterwards. Deleting the Home Connect account after disconnecting might remove it, but that's untested and the consequences aren't known, especially if the cloud connection is turned back on later.
 - **It can only be turned back on over the local connection**: from this library, or from the official app on the same network. The appliance's own settings menu can't do it. If the appliance's local WebSocket ever shuts down while the cloud is off, the appliance may become unreachable.
-- **Some appliances show it on their display**: a Wi-Fi icon with an X means the appliance is on Wi-Fi but can't reach the cloud, which is expected while the cloud connection is off.
+- **Some appliances show an X on their Wi-Fi icon** while the cloud connection is off. It means the appliance is on Wi-Fi but can't reach the cloud, which is expected.
 
 Appliances without the setting raise `AccessError` from `set_cloud_connection()`, and both properties return `None` for them.
 
