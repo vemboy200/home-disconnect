@@ -105,6 +105,16 @@ appliance.get("BSH.Common.Option.RemainingProgramTime")  # any entity by name, o
 
 The collections: `status`, `settings`, `events`, `commands`, `options`, `programs`, and `appliance.entities` for everything: a read-only mapping of name to entity (`name in appliance.entities`, `.get()`, `.items()`), with `appliance.entities.by_uid` for lookups by UID.
 
+Some features come in numbered groups, like an oven's cavities, a hob's zones or the favorite programs. `group_ids()` lists the groups under a prefix, so you don't have to parse the names:
+
+```python
+appliance.group_ids("Cooking.Oven.Status.Cavity")  # ["001", "002"] on a double oven
+appliance.group_ids("Cooking.Hob.Status.Zone")  # ["001", "002", "003", "004"]
+appliance.group_ids("BSH.Common.Program.Favorite")  # ["001", "002"]
+```
+
+An appliance doesn't always have the same groups under every prefix (an oven can report a cavity's status without any settings for it), so ask for the prefix you need.
+
 - **Enums** come as names in `value` and as numbers in `value_raw`; `enum` has the whole mapping.
 - **Booleans** are always `bool`, even when the appliance sends `0`/`1`.
 - **Everything else** is the value the appliance sent.

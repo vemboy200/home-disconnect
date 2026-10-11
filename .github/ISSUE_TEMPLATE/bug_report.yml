@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a problem with the home-disconnect library itself.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For problems you hit through Home Connect Local in Home Assistant, please open the issue on [Home Connect Local](https://github.com/vemboy200/homeconnect_local_hass/issues/new/choose) instead.
+  - type: textarea
+    attributes:
+      label: The problem
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: checkboxes
+    attributes:
+      label: Before submitting a bug report
+      options:
+        - label: I have tried the latest release of home-disconnect, including betas.
+          required: true
+        - label: I have checked that the same action works in the Home Connect app.
+          required: true
+        - label: I have checked the [open issues](https://github.com/vemboy200/home-disconnect/issues) to make sure this isn't a duplicate.
+          required: true
+
+  - type: input
+    attributes:
+      label: Version of home-disconnect
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Python version
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Appliance
+      placeholder: "e.g. Siemens LC81KAN20 hood"
+      description: Brand, model and type of the appliance.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Debug log
+      render: text
+      description: |
+        Set the `home_disconnect` logger to `DEBUG` (e.g. `logging.getLogger("home_disconnect").setLevel(logging.DEBUG)`) and reproduce the problem.
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Device Description / Feature Mapping files
+      placeholder: "drag-and-drop the *_DeviceDescription.xml and *_FeatureMapping.xml files here"
+      description: >-
+        The appliance's profile, if the problem is specific to it. Rename the two files to remove the MAC address segment from the filename.
+        **Do not attach the `.json` file** from the Profile Downloader or a profile ZIP: it contains your appliance's local encryption key.
+    validations:
+      required: false

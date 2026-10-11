@@ -174,6 +174,27 @@ async def test_set_finish_in_fallback_needs_a_program(
         await appliance.set_finish_in(7200)
 
 
+START_WITH_FINISH_IN = (
+    "/ro/activeProgram",
+    [{"program": COTTON, "options": [{"uid": FINISH_IN, "value": 7200}]}],
+)
+
+
+async def test_set_finish_in_starts_the_program_when_no_window_opens(
+    appliance: Appliance, recorder: Recorder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Fork issue #146's washer: the active program never becomes writable, but a program
+    # start with the finish time as an option is accepted.
+    monkeypatch.setattr(appliance_module, "ACTIVE_PROGRAM_WINDOW", 0.05)
+    appliance.entities.apply([{"uid": SELECTED, "value": COTTON}])
+    recorder.refuse = lambda m: 541 if m.resource == "/ro/values" else None
+    await appliance.set_finish_in(7200)
+    assert recorder.sent == [
+        ("/ro/values", [{"uid": FINISH_IN, "value": 7200}]),
+        START_WITH_FINISH_IN,
+    ]
+
+
 async def test_set_finish_in_fallback_gives_up_when_no_window_opens(
     appliance: Appliance, recorder: Recorder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -182,7 +203,44 @@ async def test_set_finish_in_fallback_gives_up_when_no_window_opens(
     recorder.refuse = lambda _: 541
     with pytest.raises(AccessError, match="didn't open a window"):
         await appliance.set_finish_in(7200)
-    assert len(recorder.sent) == 1
+    assert recorder.sent == [
+        ("/ro/values", [{"uid": FINISH_IN, "value": 7200}]),
+        START_WITH_FINISH_IN,
+    ]
+
+
+async def open_active_program_window(appliance: Appliance) -> None:
+    await asyncio.sleep(0.05)
+    for changed in appliance.entities.apply([{"uid": ACTIVE, "access": "readWrite"}]):
+        await changed.run_callbacks()
+
+
+async def test_set_finish_in_starts_the_program_when_the_combined_write_is_refused(
+    appliance: Appliance, recorder: Recorder
+) -> None:
+    # Fork issue #146's washer refuses both writes with 541 and only takes the start.
+    appliance.entities.apply([{"uid": SELECTED, "value": COTTON}])
+    recorder.refuse = lambda m: 541 if m.resource == "/ro/values" else None
+    opener = asyncio.create_task(open_active_program_window(appliance))
+    await appliance.set_finish_in(7200)
+    await opener
+    assert recorder.sent == [
+        ("/ro/values", [{"uid": FINISH_IN, "value": 7200}]),
+        ("/ro/values", [{"uid": FINISH_IN, "value": 7200}, {"uid": ACTIVE, "value": COTTON}]),
+        START_WITH_FINISH_IN,
+    ]
+
+
+async def test_set_finish_in_combined_write_other_errors_are_raised(
+    appliance: Appliance, recorder: Recorder
+) -> None:
+    appliance.entities.apply([{"uid": SELECTED, "value": COTTON}])
+    recorder.refuse = lambda m: 400 if m.data and len(m.data) > 1 else 541
+    opener = asyncio.create_task(open_active_program_window(appliance))
+    with pytest.raises(ResponseError):
+        await appliance.set_finish_in(7200)
+    await opener
+    assert len(recorder.sent) == 2  # noqa: PLR2004
 
 
 async def test_wait_until_writable_returns_at_once_when_writable(appliance: Appliance) -> None:
