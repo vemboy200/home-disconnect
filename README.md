@@ -76,10 +76,11 @@ await appliance.set_cloud_connection(allowed=True)  # and back
 
 Things to know before you turn it off:
 
-- **The official Home Connect app and anything else that goes through the cloud** (voice assistants, the cloud Home Assistant integration, other partner services) stop reaching the appliance.
+- **The official Home Connect app still works, but only on the same network**: it talks to the appliance directly over your LAN. Anything that only goes through the cloud stops reaching it: the app away from home, voice assistants, the cloud Home Assistant integration and other partner services.
 - **Software updates** come from BSH's servers, so turn it back on now and then to get them.
 - **Pairing a new appliance** still needs the cloud: the app pairs it, and the profile with its local key comes from your Home Connect account. Get the profile first, then disconnect.
-- **You can always turn it back on**, from this library or from the appliance's own settings menu.
+- **It can only be turned back on over the local connection**: from this library, or from the official app on the same network. The appliance's own settings menu can't do it. If the appliance's local WebSocket ever shuts down while the cloud is off, the appliance may become unreachable.
+- **Some appliances show it on their display**: a Wi-Fi icon with an X means the appliance is on Wi-Fi but can't reach the cloud, which is expected while the cloud connection is off.
 
 Appliances without the setting raise `AccessError` from `set_cloud_connection()`, and both properties return `None` for them.
 
