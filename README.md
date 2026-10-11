@@ -76,10 +76,12 @@ await appliance.set_cloud_connection(allowed=True)  # and back
 
 Things to know before you turn it off:
 
-- **The official Home Connect app and anything else that goes through the cloud** (voice assistants, the cloud Home Assistant integration, other partner services) stop reaching the appliance.
+- **The official Home Connect app still works, but only on the same network**: it talks to the appliance directly over your LAN. The app away from home stops reaching it.
+- **Every official third-party service is disconnected**: voice assistants, the cloud-based Home Connect integration in Home Assistant and other partner services all go through the cloud, since BSH only uses the local connection for its own app. That includes services running on local hubs: Homey's Home Connect app, for example, loses the appliance even though Homey runs in your home like Home Assistant does.
 - **Software updates** come from BSH's servers, so turn it back on now and then to get them.
-- **Pairing a new appliance** still needs the cloud: the app pairs it, and the profile with its local key comes from your Home Connect account. Get the profile first, then disconnect.
-- **You can always turn it back on**, from this library or from the appliance's own settings menu.
+- **Pairing a new appliance** still needs the cloud: the app pairs it, and its profile with the local key is stored in your Home Connect account. Once it's paired, the order doesn't matter: turning the cloud connection off doesn't remove the profile, so it can still be downloaded from the account afterwards. Deleting the Home Connect account after disconnecting might remove it, but that's untested and the consequences aren't known, especially if the cloud connection is turned back on later.
+- **It can only be turned back on over the local connection**: from this library, or from the official app on the same network. The appliance's own settings menu can't do it. If the appliance's local WebSocket ever shuts down while the cloud is off, the appliance may become unreachable.
+- **Some appliances show an X on their Wi-Fi icon** while the cloud connection is off. It means the appliance is on Wi-Fi but can't reach the cloud, which is expected.
 
 Appliances without the setting raise `AccessError` from `set_cloud_connection()`, and both properties return `None` for them.
 
