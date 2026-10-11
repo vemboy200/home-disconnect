@@ -149,6 +149,10 @@ class Appliance:
         """Programs by name."""
         return self.entities.programs
 
+    def group_ids(self, prefix: str) -> list[str]:
+        """List the numbered groups under `prefix`; see `Entities.group_ids()`."""
+        return self.entities.group_ids(prefix)
+
     @property
     def active_program(self) -> Program | None:
         """The program that's running, if any; the entity is `entities.active_program`."""

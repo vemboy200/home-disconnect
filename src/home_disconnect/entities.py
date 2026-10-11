@@ -24,6 +24,7 @@ import json
 import logging
 from collections.abc import Mapping
 from enum import StrEnum
+from itertools import chain
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from .errors import HomeDisconnectError
@@ -688,6 +689,24 @@ class Entities(Mapping[str, Entity]):
     def options(self) -> dict[str, Option]:
         """Options by name."""
         return self._of_type(Option)
+
+    def group_ids(self, prefix: str) -> list[str]:
+        """List the numbered groups under `prefix`, such as an oven's cavities or a hob's zones.
+
+        A group is every entity or program named `{prefix}.{number}` or `{prefix}.{number}.…`,
+        so on a double oven `group_ids("Cooking.Oven.Status.Cavity")` gives `["001", "002"]`.
+        The IDs are sorted and kept as the appliance writes them, leading zeros included.
+        Appliances don't always have the same groups under every prefix (an oven can report a
+        cavity's status without any of its settings), so ask for the prefix you need.
+        """
+        start = f"{prefix}."
+        ids: set[str] = set()
+        for name in chain(self.by_name, self.programs):
+            if name.startswith(start):
+                group = name[len(start) :].partition(".")[0]
+                if group.isdigit():
+                    ids.add(group)
+        return sorted(ids)
 
     @property
     def full_option_set(self) -> bool:
