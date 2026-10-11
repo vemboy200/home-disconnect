@@ -5,7 +5,7 @@ Talk to Home Connect appliances (Bosch, Siemens, Thermador, Neff, Gaggenau and t
 The name is the point: once you have an appliance's profile, everything runs locally, and you can even tell the appliance to stop talking to BSH's servers altogether (see [Disconnecting from the cloud](#disconnecting-from-the-cloud)).
 
 > [!NOTE]
-> This repository is the MIT-licensed rewrite that becomes `home-disconnect` 2.0.0. The `home-disconnect` 1.x releases are a fork of [homeconnect_websocket](https://github.com/chris-mc1/homeconnect_websocket), which has no license, so they can't carry one. Once the rewrite is complete, this repository takes over the `home-disconnect` name. See [PROVENANCE.md](PROVENANCE.md) for where every part comes from.
+> 2.0.0 is a new, MIT-licensed library written for this repository. Versions up to 1.7.0 came from [home-disconnect-old](https://github.com/vemboy200/home-disconnect-old), a fork of [homeconnect_websocket](https://github.com/chris-mc1/homeconnect_websocket), which has no license; that repository is archived and none of its code is used here. The 2.x API is not compatible with 1.x. See [PROVENANCE.md](https://github.com/vemboy200/home-disconnect/blob/main/PROVENANCE.md) for where every part comes from.
 
 ## What it does
 
@@ -60,7 +60,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-More in the [usage guide](docs/usage.md): getting a profile, reading and writing values, callbacks, programs, connection states, errors and exporting profiles.
+More in the [usage guide](https://github.com/vemboy200/home-disconnect/blob/main/docs/usage.md): getting a profile, reading and writing values, callbacks, programs, connection states, errors and exporting profiles.
 
 ## Disconnecting from the cloud
 
@@ -85,7 +85,7 @@ Appliances without the setting raise `AccessError` from `set_cloud_connection()`
 
 ## Contributing and licensing
 
-The code is MIT-licensed ([LICENSE](LICENSE)). Parts are based on the MIT-licensed [hcpy](https://github.com/hcpy2-0/hcpy) and on code moved from Home Connect Local; their notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and [PROVENANCE.md](PROVENANCE.md) lists where each module comes from. Code from `homeconnect_websocket` (and so from `home-disconnect` 1.x) must not be copied here, including its tests and protocol document.
+The code is MIT-licensed ([LICENSE](https://github.com/vemboy200/home-disconnect/blob/main/LICENSE)). Parts are based on the MIT-licensed [hcpy](https://github.com/hcpy2-0/hcpy) and on code moved from Home Connect Local; their notices are in [THIRD_PARTY_NOTICES.md](https://github.com/vemboy200/home-disconnect/blob/main/THIRD_PARTY_NOTICES.md), and [PROVENANCE.md](https://github.com/vemboy200/home-disconnect/blob/main/PROVENANCE.md) lists where each module comes from. Code from `homeconnect_websocket` (and so from `home-disconnect` 1.x) must not be copied here, including its tests and protocol document.
 
 ```bash
 uv sync

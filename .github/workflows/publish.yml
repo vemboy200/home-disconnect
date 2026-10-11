@@ -24,9 +24,8 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    # Same workflow file name and environment as the current home-disconnect
-    # repository, so PyPI's trusted publisher matches this repository once it
-    # takes over the home-disconnect name.
+    # PyPI's trusted publisher for home-disconnect matches this repository, this
+    # workflow file name and this environment; keep all three if anything moves.
     environment:
       name: pypi
       url: https://pypi.org/project/home-disconnect/

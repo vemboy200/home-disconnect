@@ -44,3 +44,13 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - run: uv run pytest --cov --cov-report=term-missing
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0 # hatch-vcs reads the version from git tags
+      - uses: astral-sh/setup-uv@v10.0.1
+      - run: uv build
+      - run: uvx twine check --strict dist/*
