@@ -52,6 +52,8 @@ FINISH_IN_RELATIVE = "BSH.Common.Option.FinishInRelative"
 # as writable for a moment about every 30 seconds.
 ACTIVE_PROGRAM_WINDOW = 35
 _FINISH_IN_FALLBACK_CODES = (501, 541)
+# ProcessStateNotCompliant: the combined finish-in write refused as well (fork issue #146).
+_PROCESS_STATE_NOT_COMPLIANT = 541
 
 type ConnectionCallback = Callable[[ConnectionState], Awaitable[None]]
 
@@ -297,6 +299,11 @@ class Appliance:
         #384, answers 501 or 541) and only accept it together with the active program, while
         the active program is briefly writable. For those two codes this waits for that
         window (up to `ACTIVE_PROGRAM_WINDOW` seconds) and writes both in one message.
+
+        Others refuse that too and only take the finish time as an option of the program
+        start (a Siemens WM16XKH2EU washer, fork issue #146). As a last resort, when no window
+        opens or the combined write is refused with 541, this starts the selected program
+        with the finish time, so on those appliances the program starts (delayed).
         """
         finish_in = self._entity_for(FINISH_IN_RELATIVE)
         try:
@@ -316,17 +323,29 @@ class Appliance:
                 await root.wait_until_writable()
         except TimeoutError:
             msg = "The appliance didn't open a window to set the finish time"
-            raise AccessError(msg) from None
-        await self.session.request(
-            Message(
-                "/ro/values",
-                Action.POST,
-                [
-                    {"uid": finish_in.uid, "value": finish_in.to_raw(seconds)},
-                    {"uid": root.uid, "value": program.uid},
-                ],
+            no_window = AccessError(msg)
+            try:
+                await self.start_program(program, {finish_in: seconds})
+            except ResponseError:
+                # The start doesn't need the window; if it's refused as well, the missing
+                # window is the problem to report.
+                raise no_window from None
+            return
+        try:
+            await self.session.request(
+                Message(
+                    "/ro/values",
+                    Action.POST,
+                    [
+                        {"uid": finish_in.uid, "value": finish_in.to_raw(seconds)},
+                        {"uid": root.uid, "value": program.uid},
+                    ],
+                )
             )
-        )
+        except ResponseError as err:
+            if err.code != _PROCESS_STATE_NOT_COMPLIANT:
+                raise
+            await self.start_program(program, {finish_in: seconds})
 
     def _entity_for(self, key: Entity | str | int) -> Entity:
         if isinstance(key, int):
