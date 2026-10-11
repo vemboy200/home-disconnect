@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Problem with Home Connect Local in Home Assistant
+    url: https://github.com/vemboy200/homeconnect_local_hass/issues/new/choose
+    about: Using the library through Home Connect Local? Report it there, with the integration's diagnostics. It gets moved here if the cause is in the library.

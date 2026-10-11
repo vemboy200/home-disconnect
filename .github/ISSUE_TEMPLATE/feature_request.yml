@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest something the library should support.
+labels: ["feature request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Requests for new entities in Home Assistant belong on [Home Connect Local](https://github.com/vemboy200/homeconnect_local_hass/issues/new/choose). This is for the library's own API and protocol support.
+  - type: textarea
+    attributes:
+      label: Feature description
+      description: What you'd like the library to do, and what you need it for.
+    validations:
+      required: true
+
+  - type: checkboxes
+    attributes:
+      label: Before submitting a feature request
+      options:
+        - label: It isn't in the latest release of home-disconnect, including betas.
+          required: true
+        - label: I have checked the [open issues](https://github.com/vemboy200/home-disconnect/issues) to make sure this isn't a duplicate.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Device Description / Feature Mapping files (optional)
+      placeholder: "drag-and-drop the *_DeviceDescription.xml and *_FeatureMapping.xml files here"
+      description: >-
+        If it's about a specific appliance. Rename the two files to remove the MAC address segment from the filename.
+        **Do not attach the `.json` file** from the Profile Downloader or a profile ZIP: it contains your appliance's local encryption key.
+    validations:
+      required: false
