@@ -88,16 +88,23 @@ class Session:
         on_message: MessageCallback | None = None,
         on_state_change: StateCallback | None = None,
         reconnect: bool = True,
+        reconnect_max_delay: float = RECONNECT_MAX_DELAY,
         port: int | None = None,
         request_timeout: float = REQUEST_TIMEOUT,
     ) -> None:
-        """Set up the session. Nothing connects until `connect()`."""
+        """Set up the session. Nothing connects until `connect()` or `start()`.
+
+        Reconnect attempts back off from 5 seconds up to `reconnect_max_delay`. Lower it for
+        appliances that turn their Wi-Fi off between uses, so they're picked up soon after they
+        come back.
+        """
         self._transport = Transport(client_session, host, psk64, iv64, port=port)
         self._app_name = app_name
         self._app_id = app_id
         self._on_message = on_message
         self._on_state_change = on_state_change
         self._reconnect = reconnect
+        self._reconnect_max_delay = reconnect_max_delay
         self._request_timeout = request_timeout
         self._tracker: RequestTracker | None = None
         self._receive_task: asyncio.Task[None] | None = None
@@ -140,6 +147,28 @@ class Session:
             await self._set_state(ConnectionState.DISCONNECTED)
             raise
         await self._set_state(ConnectionState.CONNECTED)
+
+    async def start(self) -> None:
+        """Connect in the background, retrying with backoff until it works.
+
+        Returns straight away. Unlike `connect()`, a failed attempt isn't raised: the session
+        goes to `RECONNECTING` and keeps trying, as after a drop, and `retry_now()` skips the
+        wait. For appliances that may be unreachable for a long time, such as a washer that
+        turns its Wi-Fi off. Needs `reconnect=True`.
+        """
+        if self.state in (
+            ConnectionState.CONNECTING,
+            ConnectionState.CONNECTED,
+            ConnectionState.RECONNECTING,
+        ):
+            msg = f"Session is already {self.state}"
+            raise AlreadyConnectedError(msg)
+        if not self._reconnect:
+            msg = "start() keeps reconnecting, so it needs reconnect=True"
+            raise HomeDisconnectError(msg)
+        self._closing = False
+        await self._set_state(ConnectionState.CONNECTING)
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop(wait_first=False))
 
     async def close(self) -> None:
         """Close the connection and stop reconnecting."""
@@ -307,17 +336,21 @@ class Session:
         elif self.state is ConnectionState.CONNECTED:
             await self._set_state(ConnectionState.DISCONNECTED)
 
-    async def _reconnect_loop(self) -> None:
-        delay: float = RECONNECT_INITIAL_DELAY
+    async def _reconnect_loop(self, *, wait_first: bool = True) -> None:
+        delay: float = min(RECONNECT_INITIAL_DELAY, self._reconnect_max_delay)
         while not self._closing:
-            if await self._wait_to_retry(delay):
-                delay = RECONNECT_INITIAL_DELAY
+            if wait_first and await self._wait_to_retry(delay):
+                delay = min(RECONNECT_INITIAL_DELAY, self._reconnect_max_delay)
             try:
                 await self._open()
             except (HomeDisconnectError, TimeoutError) as err:
                 await self._transport.close()
-                _LOGGER.debug("Reconnect failed, retrying in %ss: %s", delay, err)
-                delay = min(delay * 2, RECONNECT_MAX_DELAY)
+                # start()'s first attempt failed; from here on it's the same as after a drop.
+                await self._set_state(ConnectionState.RECONNECTING)
+                if wait_first:
+                    delay = min(delay * 2, self._reconnect_max_delay)
+                wait_first = True
+                _LOGGER.debug("Connect failed, retrying in %ss: %s", delay, err)
                 continue
             # A retry_now() during the successful attempt mustn't cut the next drop's first wait.
             self._retry_now.clear()
