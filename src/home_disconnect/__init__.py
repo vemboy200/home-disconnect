@@ -9,6 +9,7 @@ from .entities import (
     AccessError,
     ActiveProgram,
     Command,
+    DelayTooLongError,
     Entities,
     Entity,
     Event,
@@ -16,6 +17,8 @@ from .entities import (
     InvalidValueError,
     Option,
     Program,
+    ProgramDurationUnknownError,
+    RemoteStartNotAllowedError,
     SelectedProgram,
     Setting,
     Status,
@@ -39,6 +42,7 @@ from .profile_files import (
     profile_filename_stub,
 )
 from .session import ConnectionState, HandshakeError, Session
+from .transport import appliance_hostname
 
 try:
     __version__ = version("home-disconnect")
@@ -59,6 +63,7 @@ __all__ = [
     "ConnectionFailedError",
     "ConnectionState",
     "DecryptionError",
+    "DelayTooLongError",
     "DeviceProfile",
     "Entities",
     "Entity",
@@ -72,6 +77,8 @@ __all__ = [
     "Option",
     "ProfileError",
     "Program",
+    "ProgramDurationUnknownError",
+    "RemoteStartNotAllowedError",
     "ResponseError",
     "SelectedProgram",
     "Session",
@@ -80,6 +87,7 @@ __all__ = [
     "Status",
     "Token",
     "__version__",
+    "appliance_hostname",
     "build_profile_zip",
     "fetch_profiles",
     "load_profiles",

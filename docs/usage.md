@@ -84,6 +84,8 @@ await appliance.close()
 
 `connect()` runs the handshake and then reads the appliance's full state before it returns. It raises if any of that fails, and leaves nothing connected in that case. Wrap it in `asyncio.timeout()` to bound how long it may take.
 
+Without an IP address, `appliance_hostname(connection_type, ha_id, brand, appliance_type)` gives the name the appliance announces over mDNS (add `.local`): `{brand}-{type}-{haId}` for TLS appliances, the `haId` alone for AES ones. The brand and type are in `loaded.connection.raw` (`brand`, `type`). Whether the name resolves depends on the network, so resolving it through an mDNS library, or taking the address from the appliance's `_homeconnect._tcp` announcement, is more reliable.
+
 `appliance.info` holds what the appliance reports about itself (`deviceID`, `vib`, `eNumber`, `swVersion`, ...), updated on every connect.
 
 ## Reading values
@@ -143,9 +145,25 @@ Helpers for common writes:
 await appliance.set_datetime(datetime.now())  # the appliance's clock; naive local time
 await appliance.set_start_in(3600)  # StartInRelative, in seconds
 await appliance.set_finish_in(7200)  # FinishInRelative, with a fallback some dryers need
+await appliance.set_ambient_light(color=(255, 128, 0))  # a hood's ambient light, custom color
+await appliance.set_ambient_light(brightness=40)  # or dim the selected preset color
 await appliance.commands["BSH.Common.Command.PauseProgram"].execute()
 await appliance.events["Dishcare.Dishwasher.Event.SaltNearlyEmpty"].acknowledge()
 ```
+
+`set_ambient_light()` turns a hood's ambient light on (as a write of its own, since some hoods reject a power-on that carries a color) and then sets either a custom color or the preset color's brightness. A custom color's brightness is part of the color: (128, 0, 0) is a dimmer red than (255, 0, 0). The color settings only become available once the light is on, and on some hoods the custom color only once `CustomColor` is selected, so it switches the mode and waits briefly for each; a setting that never appears raises `AccessError`.
+
+Hoods have a few helpers of their own:
+
+```python
+await appliance.start_fan()  # the hood picks the level
+await appliance.set_fan_level("Cooking.Common.Option.Hood.VentingLevel", "FanStage02")
+await appliance.set_fan_level("Cooking.Common.Option.Hood.IntensiveLevel", "IntensiveStage1")
+await appliance.set_boost(on=True)
+await appliance.power_off()  # the only way to stop a hood's fan
+```
+
+`set_fan_level()` runs the fan in the running program, or `Venting` when none is running, with the other level sent as off: only one of the two runs at a time. It only sends levels the program takes right now, and raises `AccessError` for one it doesn't. A hood can't abort its program, so `power_off()` (which works for any appliance with `PowerState`) is how the fan stops; it writes `Off`, or `MainsOff`, whichever the appliance's range allows.
 
 ## Programs
 
@@ -158,6 +176,7 @@ program.options  # the option entities it takes
 await appliance.select_program(program)
 await appliance.start_program()  # the selected program
 await appliance.start_program(options={"BSH.Common.Option.FinishInRelative": 3600})
+await appliance.start_program(delay=2 * 3600)  # start two hours later
 ```
 
 `select_program()` and `start_program()` choose which options to send, following what different appliances need:
@@ -165,6 +184,8 @@ await appliance.start_program(options={"BSH.Common.Option.FinishInRelative": 360
 - Appliances that want every option with a program (`full_option_set`) get a complete set: known values, then the program's own defaults, then the options' own defaults, then their minimums.
 - A plain selection goes without options, so the appliance uses its own defaults instead of a value left over from another program.
 - Starting sends the options' last known values, leaving out read-only options, options the appliance doesn't offer at the moment, values outside the program's own range, and a meat probe setpoint with no probe plugged in.
+
+`delay` (seconds) puts the delay in the form the appliance takes it: `StartInRelative` where the appliance has it, otherwise `FinishInRelative` set to the program's duration plus the delay. The duration is `EstimatedTotalProgramTime`, or `FinishInRelative`'s own value on appliances without the estimate. Some appliances only take a delay this way, as part of the start. A result above the option's maximum raises `DelayTooLongError` (with `.maximum` in seconds), and an unknown duration raises `ProgramDurationUnknownError`, both before anything is sent.
 
 `program.select()` and `program.start()` send exactly the options you pass, for full control.
 
@@ -195,9 +216,12 @@ async def on_state(state: ConnectionState) -> None:
 
 - `CONNECTED` is only reported once the appliance's state has been read, including after a reconnect. If that read fails after a reconnect, the connection is dropped and retried rather than showing old values as current.
 - A dropped connection is retried with backoff, from 5 seconds doubling to 5 minutes, until it's back or `close()` is called. Pass `reconnect=False` to handle reconnecting yourself; the state then goes `DISCONNECTED`.
+- `reconnect_max_delay` (in seconds) lowers the 5-minute maximum. Appliances that turn their Wi-Fi off between uses, like most washers and dryers, are picked up sooner after they come back with a short one, such as 20 seconds.
+- `await appliance.connect()` raises if the first attempt fails. `await appliance.start()` instead returns straight away and keeps trying in the background, with the same backoff as after a drop: the state goes `CONNECTING`, then `RECONNECTING` between attempts, then `CONNECTED`. Use it for appliances that may be unreachable when your program starts. It needs `reconnect=True`.
 - `appliance.retry_now()` skips the rest of the current wait and starts the backoff over. Call it when you learn the appliance is back, for example when it announces itself again over mDNS (`_homeconnect._tcp`). Appliances that sleep can refuse connections for hours, so the backoff can be at its 5-minute maximum by the time they wake up.
 - A WebSocket ping goes out after 20 seconds without traffic, and a missing answer counts as a dropped connection.
 - `appliance.connected` is `True` only in `CONNECTED`.
+- `appliance.closed_cleanly` says whether the last connection ended with a normal close (WebSocket code 1000): `True` or `False` once a connection has closed, `None` while connected or before any close. Washers and dryers close cleanly when they're switched off and turn their Wi-Fi off, so a clean close there isn't a fault.
 
 ## The cloud connection
 
@@ -216,7 +240,10 @@ Everything the library raises is a `HomeDisconnectError`:
 | `ConnectionClosedError` | The connection dropped (has the close `code`) |
 | `ResponseError` | The appliance answered a request with an error `code` |
 | `AccessError` | A write isn't possible right now (read-only, unavailable, locked, missing feature) |
+| `RemoteStartNotAllowedError` | An `AccessError`: `start_program()` was called while the appliance reports remote start as off (`BSH.Common.Status.RemoteControlStartAllowed`). It has to be turned on at the appliance first |
 | `InvalidValueError` | A value the entity doesn't accept (also a `ValueError`) |
+| `DelayTooLongError` | An `InvalidValueError`: a `start_program(delay=...)` would end later than the appliance allows; `.maximum` is the limit in seconds |
+| `ProgramDurationUnknownError` | `start_program(delay=...)` needs the program's duration for a finish time, and the appliance hasn't reported it |
 | `ProfileError` | A profile file is missing, invalid or doesn't match (has the `file`) |
 | `AccountError` | Signing in or fetching profiles failed |
 

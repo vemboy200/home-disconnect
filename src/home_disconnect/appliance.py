@@ -16,10 +16,18 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from .entities import AccessError, Entities, Execution
+from .entities import (
+    AccessError,
+    DelayTooLongError,
+    Entities,
+    Execution,
+    InvalidValueError,
+    ProgramDurationUnknownError,
+    RemoteStartNotAllowedError,
+)
 from .errors import AlreadyConnectedError, HomeDisconnectError
 from .messages import Action, Message, ResponseError
-from .session import ConnectionState, Session
+from .session import RECONNECT_MAX_DELAY, ConnectionState, Session
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, Mapping
@@ -42,12 +50,30 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 _UPDATE_RESOURCES = ("/ro/values", "/ro/descriptionChange")
+WS_CLOSE_NORMAL = 1000
 
 APPLIANCE_DATETIME = "BSH.Common.Setting.ApplianceDateTime"
 ALLOW_BACKEND_CONNECTION = "BSH.Common.Setting.AllowBackendConnection"
 BACKEND_CONNECTED = "BSH.Common.Status.BackendConnected"
 START_IN_RELATIVE = "BSH.Common.Option.StartInRelative"
 FINISH_IN_RELATIVE = "BSH.Common.Option.FinishInRelative"
+AMBIENT_LIGHT_ENABLED = "BSH.Common.Setting.AmbientLightEnabled"
+AMBIENT_LIGHT_BRIGHTNESS = "BSH.Common.Setting.AmbientLightBrightness"
+AMBIENT_LIGHT_COLOR = "BSH.Common.Setting.AmbientLightColor"
+AMBIENT_LIGHT_CUSTOM_COLOR = "BSH.Common.Setting.AmbientLightCustomColor"
+CUSTOM_COLOR = "CustomColor"
+# After a write, the appliance reports which ambient light settings it now offers in a
+# descriptionChange (about 60 ms on a Siemens LC91KWW60/04, upstream #477).
+AMBIENT_SETTINGS_TIMEOUT = 2.0
+ESTIMATED_TOTAL_PROGRAM_TIME = "BSH.Common.Option.EstimatedTotalProgramTime"
+REMOTE_START_ALLOWED = "BSH.Common.Status.RemoteControlStartAllowed"
+POWER_STATE = "BSH.Common.Setting.PowerState"
+POWER_OFF_NAMES = ("Off", "MainsOff")
+VENTING_PROGRAM = "Cooking.Common.Program.Hood.Venting"
+VENTING_LEVEL = "Cooking.Common.Option.Hood.VentingLevel"
+INTENSIVE_LEVEL = "Cooking.Common.Option.Hood.IntensiveLevel"
+BOOST = "Cooking.Common.Option.Hood.Boost"
+FAN_LEVELS = (VENTING_LEVEL, INTENSIVE_LEVEL)
 # Roughly one broadcast cycle of the dryer in fork issue #384, which reports its active program
 # as writable for a moment about every 30 seconds.
 ACTIVE_PROGRAM_WINDOW = 35
@@ -73,10 +99,13 @@ class Appliance:
         app_id: str,
         on_connection_state: ConnectionCallback | None = None,
         reconnect: bool = True,
+        reconnect_max_delay: float = RECONNECT_MAX_DELAY,
         port: int | None = None,
         info: dict[str, Any] | None = None,
     ) -> None:
-        """Set up the appliance. Nothing connects until `connect()`.
+        """Set up the appliance. Nothing connects until `connect()` or `start()`.
+
+        `reconnect` and `reconnect_max_delay` work as in `Session`.
 
         `info` seeds `self.info` (e.g. values stored from an earlier connection); the
         appliance's `/ci/info` or `/iz/info` answer updates it on every connect.
@@ -92,6 +121,7 @@ class Appliance:
             on_message=self._on_message,
             on_state_change=self._on_session_state,
             reconnect=reconnect,
+            reconnect_max_delay=reconnect_max_delay,
             port=port,
         )
         self.entities = Entities(profile, self.session.request)
@@ -117,6 +147,19 @@ class Appliance:
     def connected(self) -> bool:
         """Whether the appliance is connected and its state has been read."""
         return self.state is ConnectionState.CONNECTED
+
+    @property
+    def closed_cleanly(self) -> bool | None:
+        """Whether the last connection ended with a normal WebSocket close (code 1000).
+
+        `None` while connected and before any connection has closed. Washers and dryers close
+        cleanly when they're switched off and turn their Wi-Fi off; other closes (a dropped
+        network, a missed heartbeat) are faults.
+        """
+        if self.session.connected:
+            return None
+        code = self.session.close_code
+        return None if code is None else code == WS_CLOSE_NORMAL
 
     # Shortcuts to the entities, with the names Home Connect Local uses.
     @property
@@ -171,6 +214,7 @@ class Appliance:
         options: Mapping[Entity | str | int, Any] | None = None,
         *,
         include_current_options: bool = True,
+        delay: int = 0,
     ) -> None:
         """Start a program (by default the selected one) with the right set of options.
 
@@ -179,11 +223,41 @@ class Appliance:
         `{"BSH.Common.Option.FinishInRelative": 3600}` for a delayed start).
         `include_current_options=False` sends only `options` on appliances that don't need a
         full set (a hood's fan, for one, starts its venting program without them).
+
+        `delay` (seconds) starts the program that much later, the way the appliance takes a
+        delay: as `StartInRelative` where it has one, otherwise as `FinishInRelative` set to
+        the program's duration plus the delay. Some appliances only accept a delay this way,
+        as part of the start (fork issue #146). Raises `DelayTooLongError` when the result is
+        above the option's maximum, and `ProgramDurationUnknownError` when a finish time is
+        needed and the duration isn't known.
+
+        Raises `RemoteStartNotAllowedError` when the appliance reports that remote start is off,
+        instead of sending a start it would reject.
         """
         program = program or self.selected_program
         if program is None:
             msg = "No program is selected"
             raise AccessError(msg)
+        remote_start = self.entities.get(REMOTE_START_ALLOWED)
+        if remote_start is not None and remote_start.value is False:
+            msg = "Remote start is turned off on the appliance"
+            raise RemoteStartNotAllowedError(msg)
+        if delay:
+            options = {**(options or {}), **self._delay_option(delay, options or {})}
+        await self._start(program, options, include_current_options=include_current_options)
+
+    async def _start(
+        self,
+        program: Program,
+        options: Mapping[Entity | str | int, Any] | None,
+        *,
+        include_current_options: bool = True,
+    ) -> None:
+        """Start `program` with the option set it needs, without the remote start check.
+
+        A hood's fan is controlled through program starts too, and its remote start status
+        isn't known to gate that.
+        """
         if program.full_option_set:
             current = program.full_option_values()
         elif include_current_options:
@@ -191,6 +265,45 @@ class Appliance:
         else:
             current = {}
         await program.start(options, raw_options=current)
+
+    def _delay_option(
+        self, delay: int, options: Mapping[Entity | str | int, Any]
+    ) -> dict[Entity | str | int, Any]:
+        """Return the option that delays a start by `delay` seconds."""
+        start_in = self.entities.get(START_IN_RELATIVE)
+        finish_in = self.entities.get(FINISH_IN_RELATIVE)
+        if start_in is not None:
+            target, value = start_in, delay
+        elif finish_in is not None:
+            target, value = finish_in, self._program_duration(finish_in, options) + delay
+        else:
+            msg = "This appliance has no start delay"
+            raise AccessError(msg)
+        if target.max is not None and value > target.max:
+            msg = f"{target.name} would be {value} s, above the maximum of {target.max} s"
+            raise DelayTooLongError(msg, int(target.max))
+        return {target: value}
+
+    def _program_duration(
+        self, finish_in: Entity, options: Mapping[Entity | str | int, Any]
+    ) -> int:
+        """Return the program's duration in seconds, for a finish time.
+
+        `EstimatedTotalProgramTime` first: `FinishInRelative` may already hold a finish time set
+        earlier, and adding the delay to it would count that twice. With a program selected,
+        appliances that have both report the duration in each (a Siemens WM16XKH2EU washer,
+        fork issue #146), so `FinishInRelative` is the fallback for appliances without the
+        estimate. A value in `options` counts over the appliance's.
+        """
+        given = {option.uid: value for option, value in self.entities.resolve_options(options)}
+        for source in (self.entities.get(ESTIMATED_TOTAL_PROGRAM_TIME), finish_in):
+            if source is None or source.available is False:
+                continue
+            duration = given.get(source.uid, source.value)
+            if duration is not None:
+                return int(duration)
+        msg = "The program's duration isn't known, so a finish time can't be worked out"
+        raise ProgramDurationUnknownError(msg)
 
     async def select_program(self, program: Program) -> None:
         """Select a program the way the appliance expects it.
@@ -351,6 +464,133 @@ class Appliance:
                 raise
             await self.start_program(program, {finish_in: seconds})
 
+    async def set_ambient_light(
+        self,
+        *,
+        color: tuple[int, int, int] | None = None,
+        brightness: int | None = None,
+    ) -> None:
+        """Turn the ambient light on, and set a custom color or the preset color's brightness.
+
+        - `color` is the exact custom color to show, as (red, green, blue) from 0 to 255. Its
+          brightness is part of the color: (128, 0, 0) is a dimmer red than (255, 0, 0). The
+          light is switched to `CustomColor` if a preset color is selected.
+        - `brightness` (`AmbientLightBrightness`, usually 1 to 100) dims a preset color.
+        - Neither just turns the light on; the appliance restores its last color itself.
+
+        What hoods need (upstream #477, a Siemens LC91KWW60/04): turning the light on is its
+        own write, since a message that also carries a color is rejected. The color settings
+        only become available once the light is on, and the custom color only once
+        `CustomColor` is selected, so this waits briefly for each. If one never becomes
+        available, the write raises `AccessError`.
+        """
+        if color is not None and brightness is not None:
+            msg = "Pass a color or a brightness, not both: a custom color's brightness is in it"
+            raise InvalidValueError(msg)
+        enabled = self._entity_for(AMBIENT_LIGHT_ENABLED)
+        powered_on = enabled.value is not True
+        if powered_on:
+            await enabled.set_value(True)
+        if brightness is not None:
+            setting = self._entity_for(AMBIENT_LIGHT_BRIGHTNESS)
+            if powered_on:
+                await _wait_for(lambda: _can_write(setting), [setting])
+            await setting.set_value(brightness)
+            return
+        if color is not None:
+            await self._set_ambient_color(color, powered_on=powered_on)
+
+    async def _set_ambient_color(self, color: tuple[int, int, int], *, powered_on: bool) -> None:
+        custom = self._entity_for(AMBIENT_LIGHT_CUSTOM_COLOR)
+        mode = self.entities.get(AMBIENT_LIGHT_COLOR)
+        watched = [custom] if mode is None else [custom, mode]
+
+        def mode_to_switch() -> bool:
+            return mode is not None and _can_write(mode) and mode.value != CUSTOM_COLOR
+
+        if powered_on:
+            await _wait_for(lambda: _can_write(custom) or mode_to_switch(), watched)
+        if not _can_write(custom) and mode is not None and mode_to_switch():
+            await mode.set_value(CUSTOM_COLOR)
+            await _wait_for(lambda: _can_write(custom), watched)
+        if any(not 0 <= channel <= 255 for channel in color):  # noqa: PLR2004
+            msg = f"{color} isn't a color: each channel goes from 0 to 255"
+            raise InvalidValueError(msg)
+        values: dict[Entity | str | int, Any] = {custom: "#{:02x}{:02x}{:02x}".format(*color)}
+        if mode is not None and mode.value != CUSTOM_COLOR:
+            values[mode] = CUSTOM_COLOR
+        await self.set_values(values)
+
+    async def power_off(self) -> None:
+        """Switch the appliance off (`PowerState`), to `Off` or else `MainsOff`.
+
+        Only a state the appliance accepts is used: some declare more power states than their
+        range lets you write. Raises `AccessError` when neither can be written. For a hood this
+        is also the only way to stop the fan: it has no command to abort its program.
+        """
+        power = self._entity_for(POWER_STATE)
+        low, high = power.min, power.max
+        writable = {
+            name
+            for raw, name in (power.enum or {}).items()
+            if low is None or high is None or low <= raw <= high
+        }
+        off = next((name for name in POWER_OFF_NAMES if name in writable), None)
+        if off is None:
+            msg = f"{self.info.get('vib')} has no power state that switches it off"
+            raise AccessError(msg)
+        await power.set_value(off)
+
+    def fan_program(self) -> Program:
+        """Return the program a hood's fan runs in: the running one, else `Venting`."""
+        program = self.active_program or self.programs.get(VENTING_PROGRAM)
+        if program is None:
+            msg = "This appliance has no venting program"
+            raise AccessError(msg)
+        return program
+
+    async def start_fan(self) -> None:
+        """Start a hood's fan at the level the hood picks itself."""
+        await self._start(self.fan_program(), None, include_current_options=False)
+
+    async def set_fan_level(self, level: Entity | str | int, value: int | str) -> None:
+        """Run a hood's fan at one stage.
+
+        `level` is `VentingLevel` or `IntensiveLevel`, and `value` one of its stages (a name
+        such as `"FanStage02"`, or the raw number). Only one of them runs at a time, so the
+        other is sent as off (0). Only levels the program takes right now are sent.
+        """
+        program = self.fan_program()
+        target = self._entity_for(level)
+        levels = [option for option in program.writable_options() if option.name in FAN_LEVELS]
+        if target not in levels:
+            msg = f"{program.name} doesn't take {target.name} right now"
+            raise AccessError(msg)
+        options: dict[Entity | str | int, Any] = {
+            option: 0 for option in levels if option.enum is None or 0 in option.enum
+        }
+        options[target] = value
+        await self._start(program, options)
+
+    async def set_boost(self, *, on: bool) -> None:
+        """Turn a hood's boost on or off.
+
+        Boost is started as the `Venting` program with both levels off and `Boost` on, and
+        ended by starting `Venting` again without options. The hood ends boost by itself after
+        its own timer.
+        """
+        venting = self.programs.get(VENTING_PROGRAM)
+        if venting is None:
+            msg = "This appliance has no venting program"
+            raise AccessError(msg)
+        options: dict[Entity | str | int, Any] = {}
+        if on:
+            options = {self._entity_for(VENTING_LEVEL): 0, self._entity_for(BOOST): True}
+            intensive = self.entities.get(INTENSIVE_LEVEL)
+            if intensive is not None:
+                options[intensive] = 0
+        await venting.start(options)
+
     def _entity_for(self, key: Entity | str | int) -> Entity:
         if isinstance(key, int):
             entity = self.entities.by_uid.get(key)
@@ -396,6 +636,13 @@ class Appliance:
         finally:
             self._connecting = False
         await self._set_state(ConnectionState.CONNECTED)
+
+    async def start(self) -> None:
+        """Connect in the background and keep trying until it works. See `Session.start()`.
+
+        The appliance's state is read once it connects, as after a reconnect.
+        """
+        await self.session.start()
 
     async def close(self) -> None:
         """Disconnect and stop reconnecting."""
@@ -469,3 +716,34 @@ class Appliance:
             "service_versions": self.session.service_versions,
             **self.entities.dump(),
         }
+
+
+def _can_write(entity: Entity) -> bool:
+    """Whether the appliance currently takes a write to `entity`."""
+    return entity.access is not None and entity.access.writable and entity.available is not False
+
+
+async def _wait_for(condition: Callable[[], bool], entities: Iterable[Entity]) -> None:
+    """Wait until `condition()` holds, checking whenever one of `entities` changes.
+
+    Gives up quietly after `AMBIENT_SETTINGS_TIMEOUT`; the write that follows checks again.
+    """
+    if condition():
+        return
+    met = asyncio.Event()
+
+    async def on_change(_: Entity) -> None:
+        if condition():
+            met.set()
+
+    watched = list(entities)
+    for entity in watched:
+        entity.register_callback(on_change)
+    try:
+        async with asyncio.timeout(AMBIENT_SETTINGS_TIMEOUT):
+            await met.wait()
+    except TimeoutError:
+        pass
+    finally:
+        for entity in watched:
+            entity.unregister_callback(on_change)

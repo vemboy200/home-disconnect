@@ -49,8 +49,33 @@ class AccessError(HomeDisconnectError):
     """The entity can't be written in its current access state."""
 
 
+class RemoteStartNotAllowedError(AccessError):
+    """The appliance doesn't allow starting a program remotely right now.
+
+    Remote start has to be turned on at the appliance, on many models for each start
+    (`BSH.Common.Status.RemoteControlStartAllowed`).
+    """
+
+
 class InvalidValueError(HomeDisconnectError, ValueError):
     """A value isn't one the entity accepts."""
+
+
+class DelayTooLongError(InvalidValueError):
+    """A start delay ends later than the appliance allows.
+
+    `maximum` is the longest value, in seconds, the appliance takes for the option the delay
+    goes into (`StartInRelative`, or `FinishInRelative` with the program's duration).
+    """
+
+    def __init__(self, message: str, maximum: int) -> None:
+        """Keep the maximum for the caller's own message."""
+        super().__init__(message)
+        self.maximum = maximum
+
+
+class ProgramDurationUnknownError(HomeDisconnectError):
+    """A start delay needs the program's duration, and the appliance hasn't reported it."""
 
 
 class Access(StrEnum):
