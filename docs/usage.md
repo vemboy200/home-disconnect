@@ -233,6 +233,7 @@ Everything the library raises is a `HomeDisconnectError`:
 | `ConnectionClosedError` | The connection dropped (has the close `code`) |
 | `ResponseError` | The appliance answered a request with an error `code` |
 | `AccessError` | A write isn't possible right now (read-only, unavailable, locked, missing feature) |
+| `RemoteStartNotAllowedError` | An `AccessError`: `start_program()` was called while the appliance reports remote start as off (`BSH.Common.Status.RemoteControlStartAllowed`). It has to be turned on at the appliance first |
 | `InvalidValueError` | A value the entity doesn't accept (also a `ValueError`) |
 | `ProfileError` | A profile file is missing, invalid or doesn't match (has the `file`) |
 | `AccountError` | Signing in or fetching profiles failed |
