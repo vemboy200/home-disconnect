@@ -84,6 +84,8 @@ await appliance.close()
 
 `connect()` runs the handshake and then reads the appliance's full state before it returns. It raises if any of that fails, and leaves nothing connected in that case. Wrap it in `asyncio.timeout()` to bound how long it may take.
 
+Without an IP address, `appliance_hostname(connection_type, ha_id, brand, appliance_type)` gives the name the appliance announces over mDNS (add `.local`): `{brand}-{type}-{haId}` for TLS appliances, the `haId` alone for AES ones. The brand and type are in `loaded.connection.raw` (`brand`, `type`). Whether the name resolves depends on the network, so resolving it through an mDNS library, or taking the address from the appliance's `_homeconnect._tcp` announcement, is more reliable.
+
 `appliance.info` holds what the appliance reports about itself (`deviceID`, `vib`, `eNumber`, `swVersion`, ...), updated on every connect.
 
 ## Reading values

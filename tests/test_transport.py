@@ -18,7 +18,7 @@ from home_disconnect.errors import (
     ConnectionFailedError,
     DecryptionError,
 )
-from home_disconnect.transport import PSK_IDENTITY, Transport
+from home_disconnect.transport import PSK_IDENTITY, Transport, appliance_hostname
 
 PSK = bytes(range(32))
 IV = bytes(range(16, 32))
@@ -275,3 +275,13 @@ async def test_connect_errors_are_described_briefly(
         await transport.connect()
     assert str(raised.value) == f"Can't connect to {transport.url}: {reason}"
     assert raised.value.__cause__ is error
+
+
+def test_appliance_hostname_follows_the_scheme() -> None:
+    assert (
+        appliance_hostname("TLS", "012345678901234567", "BOSCH", "Dishwasher")
+        == "BOSCH-Dishwasher-012345678901234567"
+    )
+    assert appliance_hostname("AES", "012345678901234567", "BOSCH", "Washer") == (
+        "012345678901234567"
+    )
