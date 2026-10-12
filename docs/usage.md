@@ -145,9 +145,13 @@ Helpers for common writes:
 await appliance.set_datetime(datetime.now())  # the appliance's clock; naive local time
 await appliance.set_start_in(3600)  # StartInRelative, in seconds
 await appliance.set_finish_in(7200)  # FinishInRelative, with a fallback some dryers need
+await appliance.set_ambient_light(color=(255, 128, 0))  # a hood's ambient light, custom color
+await appliance.set_ambient_light(brightness=40)  # or dim the selected preset color
 await appliance.commands["BSH.Common.Command.PauseProgram"].execute()
 await appliance.events["Dishcare.Dishwasher.Event.SaltNearlyEmpty"].acknowledge()
 ```
+
+`set_ambient_light()` turns a hood's ambient light on (as a write of its own, since some hoods reject a power-on that carries a color) and then sets either a custom color or the preset color's brightness. A custom color's brightness is part of the color: (128, 0, 0) is a dimmer red than (255, 0, 0). The color settings only become available once the light is on, and on some hoods the custom color only once `CustomColor` is selected, so it switches the mode and waits briefly for each; a setting that never appears raises `AccessError`.
 
 Hoods have a few helpers of their own:
 

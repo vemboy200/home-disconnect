@@ -21,6 +21,7 @@ from .entities import (
     DelayTooLongError,
     Entities,
     Execution,
+    InvalidValueError,
     ProgramDurationUnknownError,
     RemoteStartNotAllowedError,
 )
@@ -56,6 +57,14 @@ ALLOW_BACKEND_CONNECTION = "BSH.Common.Setting.AllowBackendConnection"
 BACKEND_CONNECTED = "BSH.Common.Status.BackendConnected"
 START_IN_RELATIVE = "BSH.Common.Option.StartInRelative"
 FINISH_IN_RELATIVE = "BSH.Common.Option.FinishInRelative"
+AMBIENT_LIGHT_ENABLED = "BSH.Common.Setting.AmbientLightEnabled"
+AMBIENT_LIGHT_BRIGHTNESS = "BSH.Common.Setting.AmbientLightBrightness"
+AMBIENT_LIGHT_COLOR = "BSH.Common.Setting.AmbientLightColor"
+AMBIENT_LIGHT_CUSTOM_COLOR = "BSH.Common.Setting.AmbientLightCustomColor"
+CUSTOM_COLOR = "CustomColor"
+# After a write, the appliance reports which ambient light settings it now offers in a
+# descriptionChange (about 60 ms on a Siemens LC91KWW60/04, upstream #477).
+AMBIENT_SETTINGS_TIMEOUT = 2.0
 ESTIMATED_TOTAL_PROGRAM_TIME = "BSH.Common.Option.EstimatedTotalProgramTime"
 REMOTE_START_ALLOWED = "BSH.Common.Status.RemoteControlStartAllowed"
 POWER_STATE = "BSH.Common.Setting.PowerState"
@@ -455,6 +464,63 @@ class Appliance:
                 raise
             await self.start_program(program, {finish_in: seconds})
 
+    async def set_ambient_light(
+        self,
+        *,
+        color: tuple[int, int, int] | None = None,
+        brightness: int | None = None,
+    ) -> None:
+        """Turn the ambient light on, and set a custom color or the preset color's brightness.
+
+        - `color` is the exact custom color to show, as (red, green, blue) from 0 to 255. Its
+          brightness is part of the color: (128, 0, 0) is a dimmer red than (255, 0, 0). The
+          light is switched to `CustomColor` if a preset color is selected.
+        - `brightness` (`AmbientLightBrightness`, usually 1 to 100) dims a preset color.
+        - Neither just turns the light on; the appliance restores its last color itself.
+
+        What hoods need (upstream #477, a Siemens LC91KWW60/04): turning the light on is its
+        own write, since a message that also carries a color is rejected. The color settings
+        only become available once the light is on, and the custom color only once
+        `CustomColor` is selected, so this waits briefly for each. If one never becomes
+        available, the write raises `AccessError`.
+        """
+        if color is not None and brightness is not None:
+            msg = "Pass a color or a brightness, not both: a custom color's brightness is in it"
+            raise InvalidValueError(msg)
+        enabled = self._entity_for(AMBIENT_LIGHT_ENABLED)
+        powered_on = enabled.value is not True
+        if powered_on:
+            await enabled.set_value(True)
+        if brightness is not None:
+            setting = self._entity_for(AMBIENT_LIGHT_BRIGHTNESS)
+            if powered_on:
+                await _wait_for(lambda: _can_write(setting), [setting])
+            await setting.set_value(brightness)
+            return
+        if color is not None:
+            await self._set_ambient_color(color, powered_on=powered_on)
+
+    async def _set_ambient_color(self, color: tuple[int, int, int], *, powered_on: bool) -> None:
+        custom = self._entity_for(AMBIENT_LIGHT_CUSTOM_COLOR)
+        mode = self.entities.get(AMBIENT_LIGHT_COLOR)
+        watched = [custom] if mode is None else [custom, mode]
+
+        def mode_to_switch() -> bool:
+            return mode is not None and _can_write(mode) and mode.value != CUSTOM_COLOR
+
+        if powered_on:
+            await _wait_for(lambda: _can_write(custom) or mode_to_switch(), watched)
+        if not _can_write(custom) and mode is not None and mode_to_switch():
+            await mode.set_value(CUSTOM_COLOR)
+            await _wait_for(lambda: _can_write(custom), watched)
+        if any(not 0 <= channel <= 255 for channel in color):  # noqa: PLR2004
+            msg = f"{color} isn't a color: each channel goes from 0 to 255"
+            raise InvalidValueError(msg)
+        values: dict[Entity | str | int, Any] = {custom: "#{:02x}{:02x}{:02x}".format(*color)}
+        if mode is not None and mode.value != CUSTOM_COLOR:
+            values[mode] = CUSTOM_COLOR
+        await self.set_values(values)
+
     async def power_off(self) -> None:
         """Switch the appliance off (`PowerState`), to `Off` or else `MainsOff`.
 
@@ -650,3 +716,34 @@ class Appliance:
             "service_versions": self.session.service_versions,
             **self.entities.dump(),
         }
+
+
+def _can_write(entity: Entity) -> bool:
+    """Whether the appliance currently takes a write to `entity`."""
+    return entity.access is not None and entity.access.writable and entity.available is not False
+
+
+async def _wait_for(condition: Callable[[], bool], entities: Iterable[Entity]) -> None:
+    """Wait until `condition()` holds, checking whenever one of `entities` changes.
+
+    Gives up quietly after `AMBIENT_SETTINGS_TIMEOUT`; the write that follows checks again.
+    """
+    if condition():
+        return
+    met = asyncio.Event()
+
+    async def on_change(_: Entity) -> None:
+        if condition():
+            met.set()
+
+    watched = list(entities)
+    for entity in watched:
+        entity.register_callback(on_change)
+    try:
+        async with asyncio.timeout(AMBIENT_SETTINGS_TIMEOUT):
+            await met.wait()
+    except TimeoutError:
+        pass
+    finally:
+        for entity in watched:
+            entity.unregister_callback(on_change)
