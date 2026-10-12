@@ -16,7 +16,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from .entities import AccessError, Entities, Execution
+from .entities import AccessError, Entities, Execution, RemoteStartNotAllowedError
 from .errors import AlreadyConnectedError, HomeDisconnectError
 from .messages import Action, Message, ResponseError
 from .session import RECONNECT_MAX_DELAY, ConnectionState, Session
@@ -48,6 +48,7 @@ ALLOW_BACKEND_CONNECTION = "BSH.Common.Setting.AllowBackendConnection"
 BACKEND_CONNECTED = "BSH.Common.Status.BackendConnected"
 START_IN_RELATIVE = "BSH.Common.Option.StartInRelative"
 FINISH_IN_RELATIVE = "BSH.Common.Option.FinishInRelative"
+REMOTE_START_ALLOWED = "BSH.Common.Status.RemoteControlStartAllowed"
 # Roughly one broadcast cycle of the dryer in fork issue #384, which reports its active program
 # as writable for a moment about every 30 seconds.
 ACTIVE_PROGRAM_WINDOW = 35
@@ -183,11 +184,18 @@ class Appliance:
         `{"BSH.Common.Option.FinishInRelative": 3600}` for a delayed start).
         `include_current_options=False` sends only `options` on appliances that don't need a
         full set (a hood's fan, for one, starts its venting program without them).
+
+        Raises `RemoteStartNotAllowedError` when the appliance reports that remote start is off,
+        instead of sending a start it would reject.
         """
         program = program or self.selected_program
         if program is None:
             msg = "No program is selected"
             raise AccessError(msg)
+        remote_start = self.entities.get(REMOTE_START_ALLOWED)
+        if remote_start is not None and remote_start.value is False:
+            msg = "Remote start is turned off on the appliance"
+            raise RemoteStartNotAllowedError(msg)
         if program.full_option_set:
             current = program.full_option_values()
         elif include_current_options:
