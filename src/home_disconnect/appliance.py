@@ -16,7 +16,13 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from .entities import AccessError, Entities, Execution, InvalidValueError
+from .entities import (
+    AccessError,
+    Entities,
+    Execution,
+    InvalidValueError,
+    RemoteStartNotAllowedError,
+)
 from .errors import AlreadyConnectedError, HomeDisconnectError
 from .messages import Action, Message, ResponseError
 from .session import RECONNECT_MAX_DELAY, ConnectionState, Session
@@ -57,6 +63,7 @@ CUSTOM_COLOR = "CustomColor"
 # After a write, the appliance reports which ambient light settings it now offers in a
 # descriptionChange (about 60 ms on a Siemens LC91KWW60/04, upstream #477).
 AMBIENT_SETTINGS_TIMEOUT = 2.0
+REMOTE_START_ALLOWED = "BSH.Common.Status.RemoteControlStartAllowed"
 POWER_STATE = "BSH.Common.Setting.PowerState"
 POWER_OFF_NAMES = ("Off", "MainsOff")
 VENTING_PROGRAM = "Cooking.Common.Program.Hood.Venting"
@@ -212,11 +219,32 @@ class Appliance:
         `{"BSH.Common.Option.FinishInRelative": 3600}` for a delayed start).
         `include_current_options=False` sends only `options` on appliances that don't need a
         full set (a hood's fan, for one, starts its venting program without them).
+
+        Raises `RemoteStartNotAllowedError` when the appliance reports that remote start is off,
+        instead of sending a start it would reject.
         """
         program = program or self.selected_program
         if program is None:
             msg = "No program is selected"
             raise AccessError(msg)
+        remote_start = self.entities.get(REMOTE_START_ALLOWED)
+        if remote_start is not None and remote_start.value is False:
+            msg = "Remote start is turned off on the appliance"
+            raise RemoteStartNotAllowedError(msg)
+        await self._start(program, options, include_current_options=include_current_options)
+
+    async def _start(
+        self,
+        program: Program,
+        options: Mapping[Entity | str | int, Any] | None,
+        *,
+        include_current_options: bool = True,
+    ) -> None:
+        """Start `program` with the option set it needs, without the remote start check.
+
+        A hood's fan is controlled through program starts too, and its remote start status
+        isn't known to gate that.
+        """
         if program.full_option_set:
             current = program.full_option_values()
         elif include_current_options:
@@ -471,7 +499,7 @@ class Appliance:
 
     async def start_fan(self) -> None:
         """Start a hood's fan at the level the hood picks itself."""
-        await self.start_program(self.fan_program(), include_current_options=False)
+        await self._start(self.fan_program(), None, include_current_options=False)
 
     async def set_fan_level(self, level: Entity | str | int, value: int | str) -> None:
         """Run a hood's fan at one stage.
@@ -490,7 +518,7 @@ class Appliance:
             option: 0 for option in levels if option.enum is None or 0 in option.enum
         }
         options[target] = value
-        await self.start_program(program, options)
+        await self._start(program, options)
 
     async def set_boost(self, *, on: bool) -> None:
         """Turn a hood's boost on or off.

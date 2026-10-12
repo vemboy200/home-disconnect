@@ -8,7 +8,12 @@ import pytest
 
 from home_disconnect import appliance as appliance_module
 from home_disconnect.appliance import Appliance
-from home_disconnect.entities import AccessError, Entities, InvalidValueError
+from home_disconnect.entities import (
+    AccessError,
+    Entities,
+    InvalidValueError,
+    RemoteStartNotAllowedError,
+)
 from home_disconnect.messages import Message, ResponseError
 from home_disconnect.profile import parse_profile
 
@@ -32,6 +37,9 @@ DESCRIPTION = """<?xml version="1.0" encoding="UTF-8"?>
   </programGroup>
   <activeProgram access="read" uid="0100"/>
   <selectedProgram access="readWrite" uid="0101"/>
+  <statusList access="read" available="true" uid="0102">
+    <status access="read" available="true" refCID="01" refDID="00" uid="0207"/>
+  </statusList>
 </device>
 """
 
@@ -46,12 +54,14 @@ FEATURE_MAPPING = """<?xml version="1.0" encoding="UTF-8"?>
     <feature refUID="0229">BSH.Common.Option.StartInRelative</feature>
     <feature refUID="022A">BSH.Common.Option.FinishInRelative</feature>
     <feature refUID="2001">LaundryCare.Washer.Program.Cotton</feature>
+    <feature refUID="0207">BSH.Common.Status.RemoteControlStartAllowed</feature>
   </featureDescription>
 </featureMappingFile>
 """
 
 CLOCK, LIGHT, BRIGHTNESS, START_IN, FINISH_IN = 0x0208, 0x0300, 0x0301, 0x0229, 0x022A
 ACTIVE, SELECTED, COTTON = 0x0100, 0x0101, 0x2001
+REMOTE_START = 0x0207
 
 
 class Recorder:
@@ -286,3 +296,17 @@ async def test_set_values_raw_skips_checks(appliance: Appliance, recorder: Recor
     assert recorder.sent == [
         ("/ro/values", [{"uid": LIGHT, "value": 1}, {"uid": BRIGHTNESS, "value": 150}])
     ]
+
+
+async def test_start_program_refuses_while_remote_start_is_off(
+    appliance: Appliance, recorder: Recorder
+) -> None:
+    appliance.entities.apply([{"uid": SELECTED, "value": COTTON}])
+    # Not reported yet isn't a refusal: the appliance decides.
+    await appliance.start_program()
+    appliance.entities.apply([{"uid": REMOTE_START, "value": False}])
+    with pytest.raises(RemoteStartNotAllowedError):
+        await appliance.start_program()
+    appliance.entities.apply([{"uid": REMOTE_START, "value": True}])
+    await appliance.start_program()
+    assert [resource for resource, _ in recorder.sent] == ["/ro/activeProgram"] * 2

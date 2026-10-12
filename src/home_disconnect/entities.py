@@ -49,6 +49,14 @@ class AccessError(HomeDisconnectError):
     """The entity can't be written in its current access state."""
 
 
+class RemoteStartNotAllowedError(AccessError):
+    """The appliance doesn't allow starting a program remotely right now.
+
+    Remote start has to be turned on at the appliance, on many models for each start
+    (`BSH.Common.Status.RemoteControlStartAllowed`).
+    """
+
+
 class InvalidValueError(HomeDisconnectError, ValueError):
     """A value isn't one the entity accepts."""
 
