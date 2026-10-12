@@ -117,7 +117,8 @@ async def finish_in_only(recorder: Recorder) -> AsyncIterator[Appliance]:
 def started_options(recorder: Recorder) -> list[dict[str, Any]]:
     [(resource, data)] = recorder.sent
     assert resource == "/ro/activeProgram"
-    return data[0]["options"]
+    options: list[dict[str, Any]] = data[0]["options"]
+    return options
 
 
 async def test_set_values_in_one_message(appliance: Appliance, recorder: Recorder) -> None:
