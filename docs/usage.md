@@ -214,6 +214,7 @@ async def on_state(state: ConnectionState) -> None:
 - `appliance.retry_now()` skips the rest of the current wait and starts the backoff over. Call it when you learn the appliance is back, for example when it announces itself again over mDNS (`_homeconnect._tcp`). Appliances that sleep can refuse connections for hours, so the backoff can be at its 5-minute maximum by the time they wake up.
 - A WebSocket ping goes out after 20 seconds without traffic, and a missing answer counts as a dropped connection.
 - `appliance.connected` is `True` only in `CONNECTED`.
+- `appliance.closed_cleanly` says whether the last connection ended with a normal close (WebSocket code 1000): `True` or `False` once a connection has closed, `None` while connected or before any close. Washers and dryers close cleanly when they're switched off and turn their Wi-Fi off, so a clean close there isn't a fault.
 
 ## The cloud connection
 
