@@ -532,12 +532,16 @@ class Program:
         Leaves out options that aren't read-write, that the appliance doesn't offer at the
         moment (a coffee maker lists DisplayName on every beverage but never offers it, and
         sending any value rejects the whole write), and a meat probe setpoint while no probe is
-        plugged in (which also rejects the whole write).
+        plugged in (which also rejects the whole write). An option this program itself lists as
+        read-only is left out too, even when other programs can write it: a hood's Automatic
+        program lists the fan level read-only, and a start that sets it gets a 400.
         """
+        program_access = {s.uid: Access.parse(s.access) for s in self.profile.options}
         return [
             option
             for option in self.options
             if option.access is Access.READ_WRITE
+            and program_access.get(option.uid) in (None, Access.READ_WRITE)
             and option.available is not False
             and not self._entities.is_unplugged_probe(option)
         ]

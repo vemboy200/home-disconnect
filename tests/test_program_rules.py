@@ -39,6 +39,7 @@ DESCRIPTION = """<?xml version="1.0" encoding="UTF-8"?>
     </program>
     <program available="true" execution="startOnly" uid="2002">
       <option access="readWrite" available="true" default="5400" refUID="0228"/>
+      <option access="read" available="true" refUID="1400"/>
     </program>
     <program available="true" execution="selectOnly" uid="2003">
       <option access="readWrite" available="true" default="200" refUID="1400"/>
@@ -135,6 +136,16 @@ def test_writable_options(entities: Entities) -> None:
     # With the probe plugged in, its setpoint can go in.
     entities.apply([{"uid": 0x0300, "value": True}])
     assert PROBE in [o.uid for o in bake.writable_options()]
+
+
+def test_writable_options_follow_the_programs_own_access(entities: Entities) -> None:
+    # Like a hood's Automatic program and its fan level: the option is read-write in general,
+    # but this program lists it read-only, and a start that sets it gets a 400.
+    clean = program(entities, CLEAN)
+    entities.apply([{"uid": TEMPERATURE, "value": 200}])
+    assert [o.uid for o in clean.writable_options()] == [DURATION]
+    assert TEMPERATURE not in clean.known_option_values()
+    assert TEMPERATURE not in clean.full_option_values()
 
 
 def test_known_values_skip_unknown_and_out_of_range(entities: Entities) -> None:
