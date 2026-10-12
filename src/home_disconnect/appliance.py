@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 _UPDATE_RESOURCES = ("/ro/values", "/ro/descriptionChange")
+WS_CLOSE_NORMAL = 1000
 
 APPLIANCE_DATETIME = "BSH.Common.Setting.ApplianceDateTime"
 ALLOW_BACKEND_CONNECTION = "BSH.Common.Setting.AllowBackendConnection"
@@ -121,6 +122,19 @@ class Appliance:
     def connected(self) -> bool:
         """Whether the appliance is connected and its state has been read."""
         return self.state is ConnectionState.CONNECTED
+
+    @property
+    def closed_cleanly(self) -> bool | None:
+        """Whether the last connection ended with a normal WebSocket close (code 1000).
+
+        `None` while connected and before any connection has closed. Washers and dryers close
+        cleanly when they're switched off and turn their Wi-Fi off; other closes (a dropped
+        network, a missed heartbeat) are faults.
+        """
+        if self.session.connected:
+            return None
+        code = self.session.close_code
+        return None if code is None else code == WS_CLOSE_NORMAL
 
     # Shortcuts to the entities, with the names Home Connect Local uses.
     @property
