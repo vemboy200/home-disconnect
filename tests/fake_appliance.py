@@ -68,9 +68,9 @@ class FakeAppliance:
         async with self._connected:
             await self._connected.wait_for(lambda: self.connections >= count)
 
-    async def drop(self) -> None:
+    async def drop(self, code: int = 1000) -> None:
         assert self.websocket is not None
-        await self.websocket.close()
+        await self.websocket.close(code=code)
 
     async def _view(self, request: web.Request) -> web.StreamResponse:
         if not self.accepting:
