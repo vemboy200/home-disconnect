@@ -18,9 +18,11 @@ from typing import TYPE_CHECKING, Any
 
 from .entities import (
     AccessError,
+    DelayTooLongError,
     Entities,
     Execution,
     InvalidValueError,
+    ProgramDurationUnknownError,
     RemoteStartNotAllowedError,
 )
 from .errors import AlreadyConnectedError, HomeDisconnectError
@@ -63,6 +65,7 @@ CUSTOM_COLOR = "CustomColor"
 # After a write, the appliance reports which ambient light settings it now offers in a
 # descriptionChange (about 60 ms on a Siemens LC91KWW60/04, upstream #477).
 AMBIENT_SETTINGS_TIMEOUT = 2.0
+ESTIMATED_TOTAL_PROGRAM_TIME = "BSH.Common.Option.EstimatedTotalProgramTime"
 REMOTE_START_ALLOWED = "BSH.Common.Status.RemoteControlStartAllowed"
 POWER_STATE = "BSH.Common.Setting.PowerState"
 POWER_OFF_NAMES = ("Off", "MainsOff")
@@ -211,6 +214,7 @@ class Appliance:
         options: Mapping[Entity | str | int, Any] | None = None,
         *,
         include_current_options: bool = True,
+        delay: int = 0,
     ) -> None:
         """Start a program (by default the selected one) with the right set of options.
 
@@ -219,6 +223,13 @@ class Appliance:
         `{"BSH.Common.Option.FinishInRelative": 3600}` for a delayed start).
         `include_current_options=False` sends only `options` on appliances that don't need a
         full set (a hood's fan, for one, starts its venting program without them).
+
+        `delay` (seconds) starts the program that much later, the way the appliance takes a
+        delay: as `StartInRelative` where it has one, otherwise as `FinishInRelative` set to
+        the program's duration plus the delay. Some appliances only accept a delay this way,
+        as part of the start (fork issue #146). Raises `DelayTooLongError` when the result is
+        above the option's maximum, and `ProgramDurationUnknownError` when a finish time is
+        needed and the duration isn't known.
 
         Raises `RemoteStartNotAllowedError` when the appliance reports that remote start is off,
         instead of sending a start it would reject.
@@ -231,6 +242,8 @@ class Appliance:
         if remote_start is not None and remote_start.value is False:
             msg = "Remote start is turned off on the appliance"
             raise RemoteStartNotAllowedError(msg)
+        if delay:
+            options = {**(options or {}), **self._delay_option(delay, options or {})}
         await self._start(program, options, include_current_options=include_current_options)
 
     async def _start(
@@ -252,6 +265,45 @@ class Appliance:
         else:
             current = {}
         await program.start(options, raw_options=current)
+
+    def _delay_option(
+        self, delay: int, options: Mapping[Entity | str | int, Any]
+    ) -> dict[Entity | str | int, Any]:
+        """Return the option that delays a start by `delay` seconds."""
+        start_in = self.entities.get(START_IN_RELATIVE)
+        finish_in = self.entities.get(FINISH_IN_RELATIVE)
+        if start_in is not None:
+            target, value = start_in, delay
+        elif finish_in is not None:
+            target, value = finish_in, self._program_duration(finish_in, options) + delay
+        else:
+            msg = "This appliance has no start delay"
+            raise AccessError(msg)
+        if target.max is not None and value > target.max:
+            msg = f"{target.name} would be {value} s, above the maximum of {target.max} s"
+            raise DelayTooLongError(msg, int(target.max))
+        return {target: value}
+
+    def _program_duration(
+        self, finish_in: Entity, options: Mapping[Entity | str | int, Any]
+    ) -> int:
+        """Return the program's duration in seconds, for a finish time.
+
+        `EstimatedTotalProgramTime` first: `FinishInRelative` may already hold a finish time set
+        earlier, and adding the delay to it would count that twice. With a program selected,
+        appliances that have both report the duration in each (a Siemens WM16XKH2EU washer,
+        fork issue #146), so `FinishInRelative` is the fallback for appliances without the
+        estimate. A value in `options` counts over the appliance's.
+        """
+        given = {option.uid: value for option, value in self.entities.resolve_options(options)}
+        for source in (self.entities.get(ESTIMATED_TOTAL_PROGRAM_TIME), finish_in):
+            if source is None or source.available is False:
+                continue
+            duration = given.get(source.uid, source.value)
+            if duration is not None:
+                return int(duration)
+        msg = "The program's duration isn't known, so a finish time can't be worked out"
+        raise ProgramDurationUnknownError(msg)
 
     async def select_program(self, program: Program) -> None:
         """Select a program the way the appliance expects it.

@@ -176,6 +176,7 @@ program.options  # the option entities it takes
 await appliance.select_program(program)
 await appliance.start_program()  # the selected program
 await appliance.start_program(options={"BSH.Common.Option.FinishInRelative": 3600})
+await appliance.start_program(delay=2 * 3600)  # start two hours later
 ```
 
 `select_program()` and `start_program()` choose which options to send, following what different appliances need:
@@ -183,6 +184,8 @@ await appliance.start_program(options={"BSH.Common.Option.FinishInRelative": 360
 - Appliances that want every option with a program (`full_option_set`) get a complete set: known values, then the program's own defaults, then the options' own defaults, then their minimums.
 - A plain selection goes without options, so the appliance uses its own defaults instead of a value left over from another program.
 - Starting sends the options' last known values, leaving out read-only options, options the appliance doesn't offer at the moment, values outside the program's own range, and a meat probe setpoint with no probe plugged in.
+
+`delay` (seconds) puts the delay in the form the appliance takes it: `StartInRelative` where the appliance has it, otherwise `FinishInRelative` set to the program's duration plus the delay. The duration is `EstimatedTotalProgramTime`, or `FinishInRelative`'s own value on appliances without the estimate. Some appliances only take a delay this way, as part of the start. A result above the option's maximum raises `DelayTooLongError` (with `.maximum` in seconds), and an unknown duration raises `ProgramDurationUnknownError`, both before anything is sent.
 
 `program.select()` and `program.start()` send exactly the options you pass, for full control.
 
@@ -239,6 +242,8 @@ Everything the library raises is a `HomeDisconnectError`:
 | `AccessError` | A write isn't possible right now (read-only, unavailable, locked, missing feature) |
 | `RemoteStartNotAllowedError` | An `AccessError`: `start_program()` was called while the appliance reports remote start as off (`BSH.Common.Status.RemoteControlStartAllowed`). It has to be turned on at the appliance first |
 | `InvalidValueError` | A value the entity doesn't accept (also a `ValueError`) |
+| `DelayTooLongError` | An `InvalidValueError`: a `start_program(delay=...)` would end later than the appliance allows; `.maximum` is the limit in seconds |
+| `ProgramDurationUnknownError` | `start_program(delay=...)` needs the program's duration for a finish time, and the appliance hasn't reported it |
 | `ProfileError` | A profile file is missing, invalid or doesn't match (has the `file`) |
 | `AccountError` | Signing in or fetching profiles failed |
 

@@ -10,8 +10,10 @@ from home_disconnect import appliance as appliance_module
 from home_disconnect.appliance import Appliance
 from home_disconnect.entities import (
     AccessError,
+    DelayTooLongError,
     Entities,
     InvalidValueError,
+    ProgramDurationUnknownError,
     RemoteStartNotAllowedError,
 )
 from home_disconnect.messages import Message, ResponseError
@@ -31,6 +33,7 @@ DESCRIPTION = """<?xml version="1.0" encoding="UTF-8"?>
             uid="0229"/>
     <option access="readWrite" available="true" refCID="10" refDID="82" min="0" max="86400"
             uid="022A"/>
+    <option access="read" available="true" refCID="10" refDID="82" uid="022B"/>
   </optionList>
   <programGroup available="true" uid="0107">
     <program available="true" execution="selectAndStart" uid="2001"/>
@@ -53,6 +56,7 @@ FEATURE_MAPPING = """<?xml version="1.0" encoding="UTF-8"?>
     <feature refUID="0301">Cooking.Common.Setting.LightingBrightness</feature>
     <feature refUID="0229">BSH.Common.Option.StartInRelative</feature>
     <feature refUID="022A">BSH.Common.Option.FinishInRelative</feature>
+    <feature refUID="022B">BSH.Common.Option.EstimatedTotalProgramTime</feature>
     <feature refUID="2001">LaundryCare.Washer.Program.Cotton</feature>
     <feature refUID="0207">BSH.Common.Status.RemoteControlStartAllowed</feature>
   </featureDescription>
@@ -60,6 +64,7 @@ FEATURE_MAPPING = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 CLOCK, LIGHT, BRIGHTNESS, START_IN, FINISH_IN = 0x0208, 0x0300, 0x0301, 0x0229, 0x022A
+ESTIMATE = 0x022B
 ACTIVE, SELECTED, COTTON = 0x0100, 0x0101, 0x2001
 REMOTE_START = 0x0207
 
@@ -82,17 +87,44 @@ def recorder() -> Recorder:
     return Recorder()
 
 
+def make_appliance(
+    client_session: aiohttp.ClientSession, recorder: Recorder, description: str = DESCRIPTION
+) -> Appliance:
+    profile = parse_profile(description, FEATURE_MAPPING)
+    test_appliance = Appliance(
+        client_session, "127.0.0.1", profile, "AAAA", app_name="Test", app_id="id"
+    )
+    # No connection: requests go to the recorder.
+    test_appliance.session.request = recorder  # type: ignore[method-assign]
+    test_appliance.entities = Entities(profile, recorder)
+    return test_appliance
+
+
 @pytest.fixture
 async def appliance(recorder: Recorder) -> AsyncIterator[Appliance]:
     async with aiohttp.ClientSession() as client_session:
-        profile = parse_profile(DESCRIPTION, FEATURE_MAPPING)
-        test_appliance = Appliance(
-            client_session, "127.0.0.1", profile, "AAAA", app_name="Test", app_id="id"
-        )
-        # No connection: requests go to the recorder.
-        test_appliance.session.request = recorder  # type: ignore[method-assign]
-        test_appliance.entities = Entities(profile, recorder)
+        yield make_appliance(client_session, recorder)
+
+
+@pytest.fixture
+async def finish_in_only(recorder: Recorder) -> AsyncIterator[Appliance]:
+    """An appliance that takes a delay only as a finish time (no StartInRelative)."""
+    start_in = (
+        '    <option access="readWrite" available="true" refCID="10" refDID="82" min="0"'
+        ' max="86400"\n            uid="0229"/>\n'
+    )
+    assert start_in in DESCRIPTION
+    async with aiohttp.ClientSession() as client_session:
+        test_appliance = make_appliance(client_session, recorder, DESCRIPTION.replace(start_in, ""))
+        test_appliance.entities.apply([{"uid": SELECTED, "value": COTTON}])
         yield test_appliance
+
+
+def started_options(recorder: Recorder) -> list[dict[str, Any]]:
+    [(resource, data)] = recorder.sent
+    assert resource == "/ro/activeProgram"
+    options: list[dict[str, Any]] = data[0]["options"]
+    return options
 
 
 async def test_set_values_in_one_message(appliance: Appliance, recorder: Recorder) -> None:
@@ -310,3 +342,55 @@ async def test_start_program_refuses_while_remote_start_is_off(
     appliance.entities.apply([{"uid": REMOTE_START, "value": True}])
     await appliance.start_program()
     assert [resource for resource, _ in recorder.sent] == ["/ro/activeProgram"] * 2
+
+
+async def test_start_delay_goes_into_start_in(appliance: Appliance, recorder: Recorder) -> None:
+    appliance.entities.apply([{"uid": SELECTED, "value": COTTON}])
+    await appliance.start_program(delay=3600)
+    assert started_options(recorder) == [{"uid": START_IN, "value": 3600}]
+
+
+async def test_start_delay_as_finish_time_adds_the_estimate(
+    finish_in_only: Appliance, recorder: Recorder
+) -> None:
+    # FinishInRelative may hold an earlier finish time; the estimate is the duration.
+    finish_in_only.entities.apply(
+        [{"uid": ESTIMATE, "value": 5400}, {"uid": FINISH_IN, "value": 9000}]
+    )
+    await finish_in_only.start_program(delay=3600)
+    assert started_options(recorder) == [{"uid": FINISH_IN, "value": 9000}]
+
+
+async def test_start_delay_as_finish_time_falls_back_to_finish_in(
+    finish_in_only: Appliance, recorder: Recorder
+) -> None:
+    # Fork issue #146: a washer that reports the duration as FinishInRelative.
+    finish_in_only.entities.apply(
+        [{"uid": ESTIMATE, "available": False, "value": 5400}, {"uid": FINISH_IN, "value": 3600}]
+    )
+    await finish_in_only.start_program(delay=7200)
+    assert started_options(recorder) == [{"uid": FINISH_IN, "value": 10800}]
+
+
+async def test_start_delay_uses_a_finish_time_given_as_an_option(
+    finish_in_only: Appliance, recorder: Recorder
+) -> None:
+    await finish_in_only.start_program(options={FINISH_IN: 1800}, delay=3600)
+    assert started_options(recorder) == [{"uid": FINISH_IN, "value": 5400}]
+
+
+async def test_start_delay_problems_send_nothing(
+    appliance: Appliance, finish_in_only: Appliance, recorder: Recorder
+) -> None:
+    appliance.entities.apply([{"uid": SELECTED, "value": COTTON}])
+    with pytest.raises(DelayTooLongError) as err:
+        await appliance.start_program(delay=86401)
+    assert err.value.maximum == 86400  # noqa: PLR2004
+
+    with pytest.raises(ProgramDurationUnknownError):
+        await finish_in_only.start_program(delay=3600)
+
+    finish_in_only.entities.apply([{"uid": ESTIMATE, "value": 80000}])
+    with pytest.raises(DelayTooLongError):
+        await finish_in_only.start_program(delay=7200)
+    assert recorder.sent == []
