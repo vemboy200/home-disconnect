@@ -149,6 +149,18 @@ await appliance.commands["BSH.Common.Command.PauseProgram"].execute()
 await appliance.events["Dishcare.Dishwasher.Event.SaltNearlyEmpty"].acknowledge()
 ```
 
+Hoods have a few helpers of their own:
+
+```python
+await appliance.start_fan()  # the hood picks the level
+await appliance.set_fan_level("Cooking.Common.Option.Hood.VentingLevel", "FanStage02")
+await appliance.set_fan_level("Cooking.Common.Option.Hood.IntensiveLevel", "IntensiveStage1")
+await appliance.set_boost(on=True)
+await appliance.power_off()  # the only way to stop a hood's fan
+```
+
+`set_fan_level()` runs the fan in the running program, or `Venting` when none is running, with the other level sent as off: only one of the two runs at a time. It only sends levels the program takes right now, and raises `AccessError` for one it doesn't. A hood can't abort its program, so `power_off()` (which works for any appliance with `PowerState`) is how the fan stops; it writes `Off`, or `MainsOff`, whichever the appliance's range allows.
+
 ## Programs
 
 ```python
