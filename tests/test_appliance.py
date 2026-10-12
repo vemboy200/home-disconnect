@@ -391,9 +391,7 @@ async def test_closed_cleanly_follows_the_close_code(
         if state is ConnectionState.DISCONNECTED:
             disconnected.set()
 
-    appliance = make_appliance(
-        client_session, fake, reconnect=False, on_connection_state=on_state
-    )
+    appliance = make_appliance(client_session, fake, reconnect=False, on_connection_state=on_state)
     assert appliance.closed_cleanly is None
     await appliance.connect()
     try:
