@@ -57,6 +57,13 @@ CUSTOM_COLOR = "CustomColor"
 # After a write, the appliance reports which ambient light settings it now offers in a
 # descriptionChange (about 60 ms on a Siemens LC91KWW60/04, upstream #477).
 AMBIENT_SETTINGS_TIMEOUT = 2.0
+POWER_STATE = "BSH.Common.Setting.PowerState"
+POWER_OFF_NAMES = ("Off", "MainsOff")
+VENTING_PROGRAM = "Cooking.Common.Program.Hood.Venting"
+VENTING_LEVEL = "Cooking.Common.Option.Hood.VentingLevel"
+INTENSIVE_LEVEL = "Cooking.Common.Option.Hood.IntensiveLevel"
+BOOST = "Cooking.Common.Option.Hood.Boost"
+FAN_LEVELS = (VENTING_LEVEL, INTENSIVE_LEVEL)
 # Roughly one broadcast cycle of the dryer in fork issue #384, which reports its active program
 # as writable for a moment about every 30 seconds.
 ACTIVE_PROGRAM_WINDOW = 35
@@ -433,6 +440,76 @@ class Appliance:
         if mode is not None and mode.value != CUSTOM_COLOR:
             values[mode] = CUSTOM_COLOR
         await self.set_values(values)
+
+    async def power_off(self) -> None:
+        """Switch the appliance off (`PowerState`), to `Off` or else `MainsOff`.
+
+        Only a state the appliance accepts is used: some declare more power states than their
+        range lets you write. Raises `AccessError` when neither can be written. For a hood this
+        is also the only way to stop the fan: it has no command to abort its program.
+        """
+        power = self._entity_for(POWER_STATE)
+        low, high = power.min, power.max
+        writable = {
+            name
+            for raw, name in (power.enum or {}).items()
+            if low is None or high is None or low <= raw <= high
+        }
+        off = next((name for name in POWER_OFF_NAMES if name in writable), None)
+        if off is None:
+            msg = f"{self.info.get('vib')} has no power state that switches it off"
+            raise AccessError(msg)
+        await power.set_value(off)
+
+    def fan_program(self) -> Program:
+        """Return the program a hood's fan runs in: the running one, else `Venting`."""
+        program = self.active_program or self.programs.get(VENTING_PROGRAM)
+        if program is None:
+            msg = "This appliance has no venting program"
+            raise AccessError(msg)
+        return program
+
+    async def start_fan(self) -> None:
+        """Start a hood's fan at the level the hood picks itself."""
+        await self.start_program(self.fan_program(), include_current_options=False)
+
+    async def set_fan_level(self, level: Entity | str | int, value: int | str) -> None:
+        """Run a hood's fan at one stage.
+
+        `level` is `VentingLevel` or `IntensiveLevel`, and `value` one of its stages (a name
+        such as `"FanStage02"`, or the raw number). Only one of them runs at a time, so the
+        other is sent as off (0). Only levels the program takes right now are sent.
+        """
+        program = self.fan_program()
+        target = self._entity_for(level)
+        levels = [option for option in program.writable_options() if option.name in FAN_LEVELS]
+        if target not in levels:
+            msg = f"{program.name} doesn't take {target.name} right now"
+            raise AccessError(msg)
+        options: dict[Entity | str | int, Any] = {
+            option: 0 for option in levels if option.enum is None or 0 in option.enum
+        }
+        options[target] = value
+        await self.start_program(program, options)
+
+    async def set_boost(self, *, on: bool) -> None:
+        """Turn a hood's boost on or off.
+
+        Boost is started as the `Venting` program with both levels off and `Boost` on, and
+        ended by starting `Venting` again without options. The hood ends boost by itself after
+        its own timer.
+        """
+        venting = self.programs.get(VENTING_PROGRAM)
+        if venting is None:
+            msg = "This appliance has no venting program"
+            raise AccessError(msg)
+        options: dict[Entity | str | int, Any] = {}
+        if on:
+            options = {self._entity_for(VENTING_LEVEL): 0, self._entity_for(BOOST): True}
+            intensive = self.entities.get(INTENSIVE_LEVEL)
+            if intensive is not None:
+                options[intensive] = 0
+        await venting.start(options)
 
     def _entity_for(self, key: Entity | str | int) -> Entity:
         if isinstance(key, int):
