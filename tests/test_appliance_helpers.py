@@ -103,9 +103,10 @@ async def appliance(recorder: Recorder) -> AsyncIterator[Appliance]:
 @pytest.fixture
 async def finish_in_only(recorder: Recorder) -> AsyncIterator[Appliance]:
     """An appliance that takes a delay only as a finish time (no StartInRelative)."""
-    start_in = """    <option access="readWrite" available="true" refCID="10" refDID="82" min="0" max="86400"
-            uid="0229"/>
-"""
+    start_in = (
+        '    <option access="readWrite" available="true" refCID="10" refDID="82" min="0"'
+        ' max="86400"\n            uid="0229"/>\n'
+    )
     assert start_in in DESCRIPTION
     async with aiohttp.ClientSession() as client_session:
         test_appliance = make_appliance(client_session, recorder, DESCRIPTION.replace(start_in, ""))
