@@ -161,3 +161,28 @@ async def test_power_off_without_an_off_state(recorder: Recorder) -> None:
         with pytest.raises(AccessError):
             await hood.power_off()
     assert recorder.sent == []
+
+
+async def test_fan_ignores_the_remote_start_status(recorder: Recorder) -> None:
+    # The Start button's remote start check isn't known to apply to a hood's fan.
+    status = (
+        '  <statusList access="read" available="true" uid="0102">\n'
+        '    <status access="read" available="true" refCID="01" refDID="00" uid="0207"/>\n'
+        "  </statusList>\n"
+    )
+    description = DESCRIPTION.replace("  <optionList", status + "  <optionList", 1)
+    mapping_line = (
+        '    <feature refUID="0207">BSH.Common.Status.RemoteControlStartAllowed</feature>\n'
+    )
+    mapping = FEATURE_MAPPING.replace(
+        "  </featureDescription>", mapping_line + "  </featureDescription>"
+    )
+    async with aiohttp.ClientSession() as client_session:
+        profile = parse_profile(description, mapping)
+        hood = Appliance(client_session, "127.0.0.1", profile, "AAAA", app_name="Test", app_id="id")
+        hood.session.request = recorder  # type: ignore[method-assign]
+        hood.entities = Entities(profile, recorder)
+        hood.entities.apply([{"uid": 0x0207, "value": False}])
+        await hood.set_fan_level(LEVEL, 1)
+        await hood.start_fan()
+    assert len(recorder.sent) == 2  # noqa: PLR2004
