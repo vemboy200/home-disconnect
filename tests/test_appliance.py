@@ -357,3 +357,24 @@ async def test_retry_now_reconnects_the_appliance(
         assert appliance.connected
     finally:
         await appliance.close()
+
+
+async def test_start_reads_the_state_once_connected(
+    client_session: aiohttp.ClientSession, fake: FakeAppliance
+) -> None:
+    states: list[ConnectionState] = []
+    connected = asyncio.Event()
+
+    async def on_state(state: ConnectionState) -> None:
+        states.append(state)
+        if state is ConnectionState.CONNECTED:
+            connected.set()
+
+    appliance = make_appliance(client_session, fake, on_connection_state=on_state)
+    await appliance.start()
+    try:
+        await asyncio.wait_for(connected.wait(), 5)
+        assert appliance.status["BSH.Common.Status.DoorState"].value == "Closed"
+        assert states == [ConnectionState.CONNECTING, ConnectionState.CONNECTED]
+    finally:
+        await appliance.close()
