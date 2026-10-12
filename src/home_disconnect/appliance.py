@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 from .entities import AccessError, Entities, Execution
 from .errors import AlreadyConnectedError, HomeDisconnectError
 from .messages import Action, Message, ResponseError
-from .session import ConnectionState, Session
+from .session import RECONNECT_MAX_DELAY, ConnectionState, Session
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, Mapping
@@ -73,10 +73,13 @@ class Appliance:
         app_id: str,
         on_connection_state: ConnectionCallback | None = None,
         reconnect: bool = True,
+        reconnect_max_delay: float = RECONNECT_MAX_DELAY,
         port: int | None = None,
         info: dict[str, Any] | None = None,
     ) -> None:
-        """Set up the appliance. Nothing connects until `connect()`.
+        """Set up the appliance. Nothing connects until `connect()` or `start()`.
+
+        `reconnect` and `reconnect_max_delay` work as in `Session`.
 
         `info` seeds `self.info` (e.g. values stored from an earlier connection); the
         appliance's `/ci/info` or `/iz/info` answer updates it on every connect.
@@ -92,6 +95,7 @@ class Appliance:
             on_message=self._on_message,
             on_state_change=self._on_session_state,
             reconnect=reconnect,
+            reconnect_max_delay=reconnect_max_delay,
             port=port,
         )
         self.entities = Entities(profile, self.session.request)
@@ -396,6 +400,13 @@ class Appliance:
         finally:
             self._connecting = False
         await self._set_state(ConnectionState.CONNECTED)
+
+    async def start(self) -> None:
+        """Connect in the background and keep trying until it works. See `Session.start()`.
+
+        The appliance's state is read once it connects, as after a reconnect.
+        """
+        await self.session.start()
 
     async def close(self) -> None:
         """Disconnect and stop reconnecting."""
