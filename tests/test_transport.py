@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import errno
+import logging
 import os
 import socket
 import ssl
@@ -88,6 +89,38 @@ async def test_aes_exchange(session: aiohttp.ClientSession) -> None:
             assert await transport.receive() == 'echo {"resource":"/ci/services"}'
     finally:
         await server.close()
+
+
+async def test_messages_are_logged_at_debug(
+    session: aiohttp.ClientSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Every message in and out shows in the debug log, e.g. to match a UID to a feature."""
+
+    async def appliance(websocket: web.WebSocketResponse) -> None:
+        codec = AesCodec(PSK, IV, role="appliance")
+        await websocket.send_bytes(codec.encrypt('{"resource":"/ro/values"}'))
+        await websocket.send_bytes(
+            codec.encrypt('{"data":[{"serialNumber":"123456789","mac":"68-A4-0E-00-00-01"}]}')
+        )
+        await websocket.receive()
+
+    caplog.set_level(logging.DEBUG, logger="home_disconnect.transport")
+    server = await start_server(appliance)
+    try:
+        async with Transport(
+            session, "127.0.0.1", PSK64, IV64, port=server.port, name="PRG486WDH"
+        ) as transport:
+            await transport.receive()
+            assert "123456789" in await transport.receive()
+            await transport.send('{"resource":"/ci/services"}')
+    finally:
+        await server.close()
+
+    assert 'Received from PRG486WDH/127.0.0.1: {"resource": "/ro/values"}' in caplog.text
+    # Identifiers are left out of the log, not out of the message itself
+    assert "123456789" not in caplog.text
+    assert "68-A4-0E-00-00-01" not in caplog.text
+    assert 'Sent to PRG486WDH/127.0.0.1: {"resource": "/ci/services"}' in caplog.text
 
 
 async def test_aes_reconnect_starts_new_chains(session: aiohttp.ClientSession) -> None:
