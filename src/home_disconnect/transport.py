@@ -13,6 +13,7 @@ Either way the payload is JSON text; this module only moves text in and out.
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 import socket
@@ -36,6 +37,10 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Identifiers in /ci/info and /iz/info that shouldn't end up in a log someone posts publicly,
+# the same ones Home Connect Local's diagnostics leave out
+_LOG_REDACT = frozenset({"deviceID", "mac", "serialNumber", "shipSki"})
+
 PSK_IDENTITY = "HCCOM_Local_App"
 WEBSOCKET_PATH = "/homeconnect"
 TLS_PORT = 443
@@ -58,6 +63,18 @@ def _reason(err: BaseException) -> str:
     if isinstance(cause, OSError) and cause.errno is not None:
         return os.strerror(cause.errno).lower()
     return "the connection failed"
+
+
+def _redact(data: object) -> object:
+    """Replace the values of identifier keys, at any depth."""
+    if isinstance(data, dict):
+        return {
+            key: "**REDACTED**" if key in _LOG_REDACT else _redact(value)
+            for key, value in data.items()
+        }
+    if isinstance(data, list):
+        return [_redact(item) for item in data]
+    return data
 
 
 def appliance_hostname(
@@ -171,6 +188,15 @@ class Transport:
             msg = f"Can't connect to {self.url}: {_reason(err)}"
             raise ConnectionFailedError(msg) from err
 
+    def _log(self, direction: str, message: str) -> None:
+        """Log a message at debug level, with the appliance's identifiers left out."""
+        if not _LOGGER.isEnabledFor(logging.DEBUG):
+            return
+        # Logging must never break the connection, even for a message that isn't JSON
+        with contextlib.suppress(ValueError):
+            message = json.dumps(_redact(json.loads(message)))
+        _LOGGER.debug("%s %s: %s", direction, self._log_name, message)
+
     def _rejected_psk(self, err: BaseException) -> bool:
         """Whether a TLS-PSK connect failed in the handshake, i.e. after TCP connected.
 
@@ -187,7 +213,7 @@ class Transport:
     async def send(self, message: str) -> None:
         """Send one JSON text message."""
         websocket = self._require_open()
-        _LOGGER.debug("Sent to %s: %s", self._log_name, message)
+        self._log("Sent to", message)
         try:
             if self._codec is not None:
                 await websocket.send_bytes(self._codec.encrypt(message))
@@ -214,11 +240,11 @@ class Transport:
             raise ConnectionClosedError(websocket.close_code) from err
         if message.type is aiohttp.WSMsgType.BINARY and self._codec is not None:
             text = self._codec.decrypt(message.data)
-            _LOGGER.debug("Received from %s: %s", self._log_name, text)
+            self._log("Received from", text)
             return text
         if message.type is aiohttp.WSMsgType.TEXT and self._codec is None:
             text = str(message.data)
-            _LOGGER.debug("Received from %s: %s", self._log_name, text)
+            self._log("Received from", text)
             return text
         if message.type in (
             aiohttp.WSMsgType.CLOSE,
