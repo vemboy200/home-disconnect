@@ -13,6 +13,7 @@ Either way the payload is JSON text; this module only moves text in and out.
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import socket
 import ssl
@@ -32,6 +33,8 @@ from .errors import (
 if TYPE_CHECKING:
     from types import TracebackType
     from typing import Self
+
+_LOGGER = logging.getLogger(__name__)
 
 PSK_IDENTITY = "HCCOM_Local_App"
 WEBSOCKET_PATH = "/homeconnect"
@@ -104,13 +107,18 @@ class Transport:
         *,
         port: int | None = None,
         heartbeat: float | None = 20,
+        name: str | None = None,
     ) -> None:
         """Pick the scheme from the profile: an IV means AES, no IV means TLS-PSK.
 
         `heartbeat` is the WebSocket ping interval in seconds; the connection closes when a
         ping goes unanswered. `None` turns it off.
+
+        `name` (e.g. the model) goes in front of the host in the debug log, which shows every
+        message sent and received.
         """
         self._session = session
+        self._log_name = f"{name}/{host}" if name else host
         self._heartbeat = heartbeat
         psk = decode_key(psk64)
         self._codec: AesCodec | None
@@ -179,6 +187,7 @@ class Transport:
     async def send(self, message: str) -> None:
         """Send one JSON text message."""
         websocket = self._require_open()
+        _LOGGER.debug("Sent to %s: %s", self._log_name, message)
         try:
             if self._codec is not None:
                 await websocket.send_bytes(self._codec.encrypt(message))
@@ -204,9 +213,13 @@ class Transport:
                 await websocket.close()
             raise ConnectionClosedError(websocket.close_code) from err
         if message.type is aiohttp.WSMsgType.BINARY and self._codec is not None:
-            return self._codec.decrypt(message.data)
+            text = self._codec.decrypt(message.data)
+            _LOGGER.debug("Received from %s: %s", self._log_name, text)
+            return text
         if message.type is aiohttp.WSMsgType.TEXT and self._codec is None:
-            return str(message.data)
+            text = str(message.data)
+            _LOGGER.debug("Received from %s: %s", self._log_name, text)
+            return text
         if message.type in (
             aiohttp.WSMsgType.CLOSE,
             aiohttp.WSMsgType.CLOSING,

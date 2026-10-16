@@ -91,14 +91,17 @@ class Session:
         reconnect_max_delay: float = RECONNECT_MAX_DELAY,
         port: int | None = None,
         request_timeout: float = REQUEST_TIMEOUT,
+        name: str | None = None,
     ) -> None:
         """Set up the session. Nothing connects until `connect()` or `start()`.
 
         Reconnect attempts back off from 5 seconds up to `reconnect_max_delay`. Lower it for
         appliances that turn their Wi-Fi off between uses, so they're picked up soon after they
         come back.
+
+        `name` labels this appliance in the debug log, as in `Transport`.
         """
-        self._transport = Transport(client_session, host, psk64, iv64, port=port)
+        self._transport = Transport(client_session, host, psk64, iv64, port=port, name=name)
         self._app_name = app_name
         self._app_id = app_id
         self._on_message = on_message

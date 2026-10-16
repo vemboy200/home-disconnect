@@ -123,6 +123,7 @@ class Appliance:
             reconnect=reconnect,
             reconnect_max_delay=reconnect_max_delay,
             port=port,
+            name=(info or {}).get("vib"),
         )
         self.entities = Entities(profile, self.session.request)
         self._on_connection_state = on_connection_state
