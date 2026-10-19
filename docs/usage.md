@@ -142,7 +142,7 @@ await appliance.set_values(
 Helpers for common writes:
 
 ```python
-await appliance.set_datetime(datetime.now())  # the appliance's clock; naive local time
+await appliance.set_datetime(datetime.now())  # ApplianceDateTime or LocalTime; naive local time
 await appliance.set_start_in(3600)  # StartInRelative, in seconds
 await appliance.set_finish_in(7200)  # FinishInRelative, with a fallback some dryers need
 await appliance.set_ambient_light(color=(255, 128, 0))  # a hood's ambient light, custom color

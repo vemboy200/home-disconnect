@@ -53,6 +53,8 @@ _UPDATE_RESOURCES = ("/ro/values", "/ro/descriptionChange")
 WS_CLOSE_NORMAL = 1000
 
 APPLIANCE_DATETIME = "BSH.Common.Setting.ApplianceDateTime"
+# The clock on appliances without ApplianceDateTime (a NEFF C28MT23H0 oven, upstream PR #504)
+LOCAL_TIME = "BSH.Common.Setting.LocalTime"
 ALLOW_BACKEND_CONNECTION = "BSH.Common.Setting.AllowBackendConnection"
 BACKEND_CONNECTED = "BSH.Common.Status.BackendConnected"
 START_IN_RELATIVE = "BSH.Common.Option.StartInRelative"
@@ -400,10 +402,13 @@ class Appliance:
     async def set_datetime(self, when: datetime) -> None:
         """Set the appliance's clock (`BSH.Common.Setting.ApplianceDateTime`).
 
-        The appliance wants its local time as a naive ISO 8601 timestamp, so pass the local
-        time; a time zone on `when` is dropped, not converted.
+        Appliances without it have `BSH.Common.Setting.LocalTime` instead, which takes the same
+        value. The appliance wants its local time as a naive ISO 8601 timestamp, so pass the
+        local time; a time zone on `when` is dropped, not converted.
         """
-        clock = self._entity_for(APPLIANCE_DATETIME)
+        clock = self._entity_for(
+            APPLIANCE_DATETIME if APPLIANCE_DATETIME in self.entities else LOCAL_TIME
+        )
         await clock.set_value(when.replace(tzinfo=None, microsecond=0).isoformat())
 
     async def set_start_in(self, seconds: int) -> None:
