@@ -88,9 +88,12 @@ def recorder() -> Recorder:
 
 
 def make_appliance(
-    client_session: aiohttp.ClientSession, recorder: Recorder, description: str = DESCRIPTION
+    client_session: aiohttp.ClientSession,
+    recorder: Recorder,
+    description: str = DESCRIPTION,
+    feature_mapping: str = FEATURE_MAPPING,
 ) -> Appliance:
-    profile = parse_profile(description, FEATURE_MAPPING)
+    profile = parse_profile(description, feature_mapping)
     test_appliance = Appliance(
         client_session, "127.0.0.1", profile, "AAAA", app_name="Test", app_id="id"
     )
@@ -161,6 +164,18 @@ async def test_set_datetime_sends_naive_local_time(
     appliance: Appliance, recorder: Recorder, when: datetime
 ) -> None:
     await appliance.set_datetime(when)
+    assert recorder.sent == [("/ro/values", [{"uid": CLOCK, "value": "2026-09-27T21:05:09"}])]
+
+
+async def test_set_datetime_uses_local_time_without_appliance_datetime(
+    recorder: Recorder,
+) -> None:
+    feature_mapping = FEATURE_MAPPING.replace(
+        "BSH.Common.Setting.ApplianceDateTime", "BSH.Common.Setting.LocalTime"
+    )
+    async with aiohttp.ClientSession() as client_session:
+        appliance = make_appliance(client_session, recorder, feature_mapping=feature_mapping)
+        await appliance.set_datetime(datetime(2026, 9, 27, 21, 5, 9))  # noqa: DTZ001
     assert recorder.sent == [("/ro/values", [{"uid": CLOCK, "value": "2026-09-27T21:05:09"}])]
 
 
