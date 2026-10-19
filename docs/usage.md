@@ -105,6 +105,8 @@ appliance.get("BSH.Common.Option.RemainingProgramTime")  # any entity by name, o
 
 The collections: `status`, `settings`, `events`, `commands`, `options`, `programs`, and `appliance.entities` for everything: a read-only mapping of name to entity (`name in appliance.entities`, `.get()`, `.items()`), with `appliance.entities.by_uid` for lookups by UID.
 
+The names are also in `home_disconnect.keys`, one enum per kind (`StatusKey`, `SettingKey`, `EventKey`, `OptionKey`, `ProgramKey`, `CommandKey`, `RootKey`), so `appliance.status[StatusKey.BSH_COMMON_DOOR_STATE]` is the same lookup. They're `StrEnum`s, so they work anywhere a name does. They only list the names Home Connect Local and this library use, not every name an appliance can have.
+
 Some features come in numbered groups, like an oven's cavities, a hob's zones or the favorite programs. `group_ids()` lists the groups under a prefix, so you don't have to parse the names:
 
 ```python
