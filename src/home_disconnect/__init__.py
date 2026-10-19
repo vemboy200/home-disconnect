@@ -31,6 +31,15 @@ from .errors import (
     DecryptionError,
     HomeDisconnectError,
 )
+from .keys import (
+    CommandKey,
+    EventKey,
+    OptionKey,
+    ProgramKey,
+    RootKey,
+    SettingKey,
+    StatusKey,
+)
 from .legacy import serialize_legacy_description
 from .messages import Action, Message, ResponseError
 from .profile import DeviceProfile, ProfileError, parse_profile
@@ -59,6 +68,7 @@ __all__ = [
     "Appliance",
     "AuthenticationError",
     "Command",
+    "CommandKey",
     "ConnectionClosedError",
     "ConnectionFailedError",
     "ConnectionState",
@@ -68,6 +78,7 @@ __all__ = [
     "Entities",
     "Entity",
     "Event",
+    "EventKey",
     "Execution",
     "HandshakeError",
     "HomeDisconnectError",
@@ -75,16 +86,21 @@ __all__ = [
     "LoadedProfile",
     "Message",
     "Option",
+    "OptionKey",
     "ProfileError",
     "Program",
     "ProgramDurationUnknownError",
+    "ProgramKey",
     "RemoteStartNotAllowedError",
     "ResponseError",
+    "RootKey",
     "SelectedProgram",
     "Session",
     "Setting",
+    "SettingKey",
     "SignIn",
     "Status",
+    "StatusKey",
     "Token",
     "__version__",
     "appliance_hostname",

@@ -28,6 +28,7 @@ from itertools import chain
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from .errors import HomeDisconnectError
+from .keys import CommandKey, StatusKey
 from .messages import Action, Message
 from .profile import FeatureKind
 
@@ -375,11 +376,11 @@ class Event(Entity):
 
     async def acknowledge(self) -> None:
         """Acknowledge the event on the appliance, as its panel or the app would."""
-        await self._run_event_command("BSH.Common.Command.AcknowledgeEvent")
+        await self._run_event_command(CommandKey.BSH_COMMON_ACKNOWLEDGE_EVENT)
 
     async def reject(self) -> None:
         """Reject the event, for events that ask for a decision."""
-        await self._run_event_command("BSH.Common.Command.RejectEvent")
+        await self._run_event_command(CommandKey.BSH_COMMON_REJECT_EVENT)
 
     async def _run_event_command(self, name: str) -> None:
         command = self._entities.get(name)
@@ -753,7 +754,7 @@ class Entities(Mapping[str, Entity]):
         """Whether an option is a meat probe setpoint while no probe is plugged in."""
         if "MeatProbeTemperature" not in option.name:
             return False
-        plugged = self.by_name.get("Cooking.Oven.Status.MeatprobePlugged")
+        plugged = self.by_name.get(StatusKey.COOKING_OVEN_MEATPROBE_PLUGGED)
         return plugged is None or plugged.value is not True
 
     def resolve_options(

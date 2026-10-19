@@ -26,6 +26,7 @@ from .entities import (
     RemoteStartNotAllowedError,
 )
 from .errors import AlreadyConnectedError, HomeDisconnectError
+from .keys import OptionKey, ProgramKey, SettingKey, StatusKey
 from .messages import Action, Message, ResponseError
 from .session import RECONNECT_MAX_DELAY, ConnectionState, Session
 
@@ -52,30 +53,15 @@ _LOGGER = logging.getLogger(__name__)
 _UPDATE_RESOURCES = ("/ro/values", "/ro/descriptionChange")
 WS_CLOSE_NORMAL = 1000
 
-APPLIANCE_DATETIME = "BSH.Common.Setting.ApplianceDateTime"
-# The clock on appliances without ApplianceDateTime (a NEFF C28MT23H0 oven, upstream PR #504)
-LOCAL_TIME = "BSH.Common.Setting.LocalTime"
-ALLOW_BACKEND_CONNECTION = "BSH.Common.Setting.AllowBackendConnection"
-BACKEND_CONNECTED = "BSH.Common.Status.BackendConnected"
-START_IN_RELATIVE = "BSH.Common.Option.StartInRelative"
-FINISH_IN_RELATIVE = "BSH.Common.Option.FinishInRelative"
-AMBIENT_LIGHT_ENABLED = "BSH.Common.Setting.AmbientLightEnabled"
-AMBIENT_LIGHT_BRIGHTNESS = "BSH.Common.Setting.AmbientLightBrightness"
-AMBIENT_LIGHT_COLOR = "BSH.Common.Setting.AmbientLightColor"
-AMBIENT_LIGHT_CUSTOM_COLOR = "BSH.Common.Setting.AmbientLightCustomColor"
 CUSTOM_COLOR = "CustomColor"
 # After a write, the appliance reports which ambient light settings it now offers in a
 # descriptionChange (about 60 ms on a Siemens LC91KWW60/04, upstream #477).
 AMBIENT_SETTINGS_TIMEOUT = 2.0
-ESTIMATED_TOTAL_PROGRAM_TIME = "BSH.Common.Option.EstimatedTotalProgramTime"
-REMOTE_START_ALLOWED = "BSH.Common.Status.RemoteControlStartAllowed"
-POWER_STATE = "BSH.Common.Setting.PowerState"
 POWER_OFF_NAMES = ("Off", "MainsOff")
-VENTING_PROGRAM = "Cooking.Common.Program.Hood.Venting"
-VENTING_LEVEL = "Cooking.Common.Option.Hood.VentingLevel"
-INTENSIVE_LEVEL = "Cooking.Common.Option.Hood.IntensiveLevel"
-BOOST = "Cooking.Common.Option.Hood.Boost"
-FAN_LEVELS = (VENTING_LEVEL, INTENSIVE_LEVEL)
+FAN_LEVELS = (
+    OptionKey.COOKING_COMMON_HOOD_VENTING_LEVEL,
+    OptionKey.COOKING_COMMON_HOOD_INTENSIVE_LEVEL,
+)
 # Roughly one broadcast cycle of the dryer in fork issue #384, which reports its active program
 # as writable for a moment about every 30 seconds.
 ACTIVE_PROGRAM_WINDOW = 35
@@ -241,7 +227,7 @@ class Appliance:
         if program is None:
             msg = "No program is selected"
             raise AccessError(msg)
-        remote_start = self.entities.get(REMOTE_START_ALLOWED)
+        remote_start = self.entities.get(StatusKey.BSH_COMMON_REMOTE_CONTROL_START_ALLOWED)
         if remote_start is not None and remote_start.value is False:
             msg = "Remote start is turned off on the appliance"
             raise RemoteStartNotAllowedError(msg)
@@ -273,8 +259,8 @@ class Appliance:
         self, delay: int, options: Mapping[Entity | str | int, Any]
     ) -> dict[Entity | str | int, Any]:
         """Return the option that delays a start by `delay` seconds."""
-        start_in = self.entities.get(START_IN_RELATIVE)
-        finish_in = self.entities.get(FINISH_IN_RELATIVE)
+        start_in = self.entities.get(OptionKey.BSH_COMMON_START_IN_RELATIVE)
+        finish_in = self.entities.get(OptionKey.BSH_COMMON_FINISH_IN_RELATIVE)
         if start_in is not None:
             target, value = start_in, delay
         elif finish_in is not None:
@@ -299,7 +285,10 @@ class Appliance:
         estimate. A value in `options` counts over the appliance's.
         """
         given = {option.uid: value for option, value in self.entities.resolve_options(options)}
-        for source in (self.entities.get(ESTIMATED_TOTAL_PROGRAM_TIME), finish_in):
+        for source in (
+            self.entities.get(OptionKey.BSH_COMMON_ESTIMATED_TOTAL_PROGRAM_TIME),
+            finish_in,
+        ):
             if source is None or source.available is False:
                 continue
             duration = given.get(source.uid, source.value)
@@ -371,13 +360,13 @@ class Appliance:
     @property
     def cloud_connection_allowed(self) -> bool | None:
         """Whether the appliance may connect to the Home Connect cloud (`None` if unknown)."""
-        setting = self.entities.get(ALLOW_BACKEND_CONNECTION)
+        setting = self.entities.get(SettingKey.BSH_COMMON_ALLOW_BACKEND_CONNECTION)
         return None if setting is None else setting.value
 
     @property
     def cloud_connected(self) -> bool | None:
         """Whether the appliance is connected to the Home Connect cloud right now."""
-        status = self.entities.get(BACKEND_CONNECTED)
+        status = self.entities.get(StatusKey.BSH_COMMON_BACKEND_CONNECTED)
         return None if status is None else status.value
 
     async def set_cloud_connection(self, *, allowed: bool) -> None:
@@ -387,7 +376,7 @@ class Appliance:
         talking to BSH's servers, and the local connection keeps working. Raises
         `AccessError` on appliances without the `AllowBackendConnection` setting.
         """
-        await self._entity_for(ALLOW_BACKEND_CONNECTION).set_value(allowed)
+        await self._entity_for(SettingKey.BSH_COMMON_ALLOW_BACKEND_CONNECTION).set_value(allowed)
 
     async def set_values_raw(self, values: Mapping[Entity | str | int, Any]) -> None:
         """Write several raw values in one message, without converting or checking them.
@@ -406,14 +395,16 @@ class Appliance:
         value. The appliance wants its local time as a naive ISO 8601 timestamp, so pass the
         local time; a time zone on `when` is dropped, not converted.
         """
-        clock = self._entity_for(
-            APPLIANCE_DATETIME if APPLIANCE_DATETIME in self.entities else LOCAL_TIME
-        )
+        clock_name = SettingKey.BSH_COMMON_APPLIANCE_DATE_TIME
+        if clock_name not in self.entities:
+            # A NEFF C28MT23H0 oven, upstream PR #504
+            clock_name = SettingKey.BSH_COMMON_LOCAL_TIME
+        clock = self._entity_for(clock_name)
         await clock.set_value(when.replace(tzinfo=None, microsecond=0).isoformat())
 
     async def set_start_in(self, seconds: int) -> None:
         """Delay the selected program's start by `seconds` (`StartInRelative`)."""
-        await self._entity_for(START_IN_RELATIVE).set_value(seconds)
+        await self._entity_for(OptionKey.BSH_COMMON_START_IN_RELATIVE).set_value(seconds)
 
     async def set_finish_in(self, seconds: int) -> None:
         """Make the selected program finish in `seconds` (`FinishInRelative`).
@@ -428,7 +419,7 @@ class Appliance:
         opens or the combined write is refused with 541, this starts the selected program
         with the finish time, so on those appliances the program starts (delayed).
         """
-        finish_in = self._entity_for(FINISH_IN_RELATIVE)
+        finish_in = self._entity_for(OptionKey.BSH_COMMON_FINISH_IN_RELATIVE)
         try:
             await finish_in.set_value(seconds)
         except ResponseError as err:
@@ -493,12 +484,12 @@ class Appliance:
         if color is not None and brightness is not None:
             msg = "Pass a color or a brightness, not both: a custom color's brightness is in it"
             raise InvalidValueError(msg)
-        enabled = self._entity_for(AMBIENT_LIGHT_ENABLED)
+        enabled = self._entity_for(SettingKey.BSH_COMMON_AMBIENT_LIGHT_ENABLED)
         powered_on = enabled.value is not True
         if powered_on:
             await enabled.set_value(True)
         if brightness is not None:
-            setting = self._entity_for(AMBIENT_LIGHT_BRIGHTNESS)
+            setting = self._entity_for(SettingKey.BSH_COMMON_AMBIENT_LIGHT_BRIGHTNESS)
             if powered_on:
                 await _wait_for(lambda: _can_write(setting), [setting])
             await setting.set_value(brightness)
@@ -507,8 +498,8 @@ class Appliance:
             await self._set_ambient_color(color, powered_on=powered_on)
 
     async def _set_ambient_color(self, color: tuple[int, int, int], *, powered_on: bool) -> None:
-        custom = self._entity_for(AMBIENT_LIGHT_CUSTOM_COLOR)
-        mode = self.entities.get(AMBIENT_LIGHT_COLOR)
+        custom = self._entity_for(SettingKey.BSH_COMMON_AMBIENT_LIGHT_CUSTOM_COLOR)
+        mode = self.entities.get(SettingKey.BSH_COMMON_AMBIENT_LIGHT_COLOR)
         watched = [custom] if mode is None else [custom, mode]
 
         def mode_to_switch() -> bool:
@@ -534,7 +525,7 @@ class Appliance:
         range lets you write. Raises `AccessError` when neither can be written. For a hood this
         is also the only way to stop the fan: it has no command to abort its program.
         """
-        power = self._entity_for(POWER_STATE)
+        power = self._entity_for(SettingKey.BSH_COMMON_POWER_STATE)
         low, high = power.min, power.max
         writable = {
             name
@@ -549,7 +540,7 @@ class Appliance:
 
     def fan_program(self) -> Program:
         """Return the program a hood's fan runs in: the running one, else `Venting`."""
-        program = self.active_program or self.programs.get(VENTING_PROGRAM)
+        program = self.active_program or self.programs.get(ProgramKey.COOKING_COMMON_HOOD_VENTING)
         if program is None:
             msg = "This appliance has no venting program"
             raise AccessError(msg)
@@ -585,14 +576,17 @@ class Appliance:
         ended by starting `Venting` again without options. The hood ends boost by itself after
         its own timer.
         """
-        venting = self.programs.get(VENTING_PROGRAM)
+        venting = self.programs.get(ProgramKey.COOKING_COMMON_HOOD_VENTING)
         if venting is None:
             msg = "This appliance has no venting program"
             raise AccessError(msg)
         options: dict[Entity | str | int, Any] = {}
         if on:
-            options = {self._entity_for(VENTING_LEVEL): 0, self._entity_for(BOOST): True}
-            intensive = self.entities.get(INTENSIVE_LEVEL)
+            options = {
+                self._entity_for(OptionKey.COOKING_COMMON_HOOD_VENTING_LEVEL): 0,
+                self._entity_for(OptionKey.COOKING_COMMON_HOOD_BOOST): True,
+            }
+            intensive = self.entities.get(OptionKey.COOKING_COMMON_HOOD_INTENSIVE_LEVEL)
             if intensive is not None:
                 options[intensive] = 0
         await venting.start(options)
