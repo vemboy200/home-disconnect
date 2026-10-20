@@ -391,3 +391,47 @@ async def test_heartbeat_reaches_the_websocket(
     with pytest.raises(ConnectionFailedError):
         await appliance.connect()
     assert seen["heartbeat"] == expected
+
+
+async def test_start_reads_the_state_once_connected(
+    client_session: aiohttp.ClientSession, fake: FakeAppliance
+) -> None:
+    states: list[ConnectionState] = []
+    connected = asyncio.Event()
+
+    async def on_state(state: ConnectionState) -> None:
+        states.append(state)
+        if state is ConnectionState.CONNECTED:
+            connected.set()
+
+    appliance = make_appliance(client_session, fake, on_connection_state=on_state)
+    await appliance.start()
+    try:
+        await asyncio.wait_for(connected.wait(), 5)
+        assert appliance.status["BSH.Common.Status.DoorState"].value == "Closed"
+        assert states == [ConnectionState.CONNECTING, ConnectionState.CONNECTED]
+    finally:
+        await appliance.close()
+
+
+@pytest.mark.parametrize(("code", "clean"), [(1000, True), (4000, False)])
+async def test_closed_cleanly_follows_the_close_code(
+    client_session: aiohttp.ClientSession, fake: FakeAppliance, code: int, *, clean: bool
+) -> None:
+    # Washers close with 1000 when switched off; anything else is a fault.
+    disconnected = asyncio.Event()
+
+    async def on_state(state: ConnectionState) -> None:
+        if state is ConnectionState.DISCONNECTED:
+            disconnected.set()
+
+    appliance = make_appliance(client_session, fake, reconnect=False, on_connection_state=on_state)
+    assert appliance.closed_cleanly is None
+    await appliance.connect()
+    try:
+        assert appliance.closed_cleanly is None
+        await fake.drop(code)
+        await asyncio.wait_for(disconnected.wait(), 5)
+        assert appliance.closed_cleanly is clean
+    finally:
+        await appliance.close()

@@ -9,6 +9,7 @@ from .entities import (
     AccessError,
     ActiveProgram,
     Command,
+    DelayTooLongError,
     Entities,
     Entity,
     Event,
@@ -16,6 +17,8 @@ from .entities import (
     InvalidValueError,
     Option,
     Program,
+    ProgramDurationUnknownError,
+    RemoteStartNotAllowedError,
     SelectedProgram,
     Setting,
     Status,
@@ -28,6 +31,15 @@ from .errors import (
     DecryptionError,
     HomeDisconnectError,
 )
+from .keys import (
+    CommandKey,
+    EventKey,
+    OptionKey,
+    ProgramKey,
+    RootKey,
+    SettingKey,
+    StatusKey,
+)
 from .legacy import serialize_legacy_description
 from .messages import Action, Message, ResponseError
 from .profile import DeviceProfile, ProfileError, parse_profile
@@ -39,6 +51,7 @@ from .profile_files import (
     profile_filename_stub,
 )
 from .session import ConnectionState, HandshakeError, Session
+from .transport import appliance_hostname
 
 try:
     __version__ = version("home-disconnect")
@@ -55,14 +68,17 @@ __all__ = [
     "Appliance",
     "AuthenticationError",
     "Command",
+    "CommandKey",
     "ConnectionClosedError",
     "ConnectionFailedError",
     "ConnectionState",
     "DecryptionError",
+    "DelayTooLongError",
     "DeviceProfile",
     "Entities",
     "Entity",
     "Event",
+    "EventKey",
     "Execution",
     "HandshakeError",
     "HomeDisconnectError",
@@ -70,16 +86,24 @@ __all__ = [
     "LoadedProfile",
     "Message",
     "Option",
+    "OptionKey",
     "ProfileError",
     "Program",
+    "ProgramDurationUnknownError",
+    "ProgramKey",
+    "RemoteStartNotAllowedError",
     "ResponseError",
+    "RootKey",
     "SelectedProgram",
     "Session",
     "Setting",
+    "SettingKey",
     "SignIn",
     "Status",
+    "StatusKey",
     "Token",
     "__version__",
+    "appliance_hostname",
     "build_profile_zip",
     "fetch_profiles",
     "load_profiles",

@@ -28,6 +28,7 @@ from itertools import chain
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from .errors import HomeDisconnectError
+from .keys import CommandKey, StatusKey
 from .messages import Action, Message
 from .profile import FeatureKind
 
@@ -49,8 +50,33 @@ class AccessError(HomeDisconnectError):
     """The entity can't be written in its current access state."""
 
 
+class RemoteStartNotAllowedError(AccessError):
+    """The appliance doesn't allow starting a program remotely right now.
+
+    Remote start has to be turned on at the appliance, on many models for each start
+    (`BSH.Common.Status.RemoteControlStartAllowed`).
+    """
+
+
 class InvalidValueError(HomeDisconnectError, ValueError):
     """A value isn't one the entity accepts."""
+
+
+class DelayTooLongError(InvalidValueError):
+    """A start delay ends later than the appliance allows.
+
+    `maximum` is the longest value, in seconds, the appliance takes for the option the delay
+    goes into (`StartInRelative`, or `FinishInRelative` with the program's duration).
+    """
+
+    def __init__(self, message: str, maximum: int) -> None:
+        """Keep the maximum for the caller's own message."""
+        super().__init__(message)
+        self.maximum = maximum
+
+
+class ProgramDurationUnknownError(HomeDisconnectError):
+    """A start delay needs the program's duration, and the appliance hasn't reported it."""
 
 
 class Access(StrEnum):
@@ -350,11 +376,11 @@ class Event(Entity):
 
     async def acknowledge(self) -> None:
         """Acknowledge the event on the appliance, as its panel or the app would."""
-        await self._run_event_command("BSH.Common.Command.AcknowledgeEvent")
+        await self._run_event_command(CommandKey.BSH_COMMON_ACKNOWLEDGE_EVENT)
 
     async def reject(self) -> None:
         """Reject the event, for events that ask for a decision."""
-        await self._run_event_command("BSH.Common.Command.RejectEvent")
+        await self._run_event_command(CommandKey.BSH_COMMON_REJECT_EVENT)
 
     async def _run_event_command(self, name: str) -> None:
         command = self._entities.get(name)
@@ -507,12 +533,16 @@ class Program:
         Leaves out options that aren't read-write, that the appliance doesn't offer at the
         moment (a coffee maker lists DisplayName on every beverage but never offers it, and
         sending any value rejects the whole write), and a meat probe setpoint while no probe is
-        plugged in (which also rejects the whole write).
+        plugged in (which also rejects the whole write). An option this program itself lists as
+        read-only is left out too, even when other programs can write it: a hood's Automatic
+        program lists the fan level read-only, and a start that sets it gets a 400.
         """
+        program_access = {s.uid: Access.parse(s.access) for s in self.profile.options}
         return [
             option
             for option in self.options
             if option.access is Access.READ_WRITE
+            and program_access.get(option.uid) in (None, Access.READ_WRITE)
             and option.available is not False
             and not self._entities.is_unplugged_probe(option)
         ]
@@ -724,7 +754,7 @@ class Entities(Mapping[str, Entity]):
         """Whether an option is a meat probe setpoint while no probe is plugged in."""
         if "MeatProbeTemperature" not in option.name:
             return False
-        plugged = self.by_name.get("Cooking.Oven.Status.MeatprobePlugged")
+        plugged = self.by_name.get(StatusKey.COOKING_OVEN_MEATPROBE_PLUGGED)
         return plugged is None or plugged.value is not True
 
     def resolve_options(

@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import errno
+import logging
 import os
 import socket
 import ssl
@@ -18,7 +19,12 @@ from home_disconnect.errors import (
     ConnectionFailedError,
     DecryptionError,
 )
-from home_disconnect.transport import DEFAULT_HEARTBEAT, PSK_IDENTITY, Transport
+from home_disconnect.transport import (
+    DEFAULT_HEARTBEAT,
+    PSK_IDENTITY,
+    Transport,
+    appliance_hostname,
+)
 
 PSK = bytes(range(32))
 IV = bytes(range(16, 32))
@@ -88,6 +94,38 @@ async def test_aes_exchange(session: aiohttp.ClientSession) -> None:
             assert await transport.receive() == 'echo {"resource":"/ci/services"}'
     finally:
         await server.close()
+
+
+async def test_messages_are_logged_at_debug(
+    session: aiohttp.ClientSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Every message in and out shows in the debug log, e.g. to match a UID to a feature."""
+
+    async def appliance(websocket: web.WebSocketResponse) -> None:
+        codec = AesCodec(PSK, IV, role="appliance")
+        await websocket.send_bytes(codec.encrypt('{"resource":"/ro/values"}'))
+        await websocket.send_bytes(
+            codec.encrypt('{"data":[{"serialNumber":"123456789","mac":"68-A4-0E-00-00-01"}]}')
+        )
+        await websocket.receive()
+
+    caplog.set_level(logging.DEBUG, logger="home_disconnect.transport")
+    server = await start_server(appliance)
+    try:
+        async with Transport(
+            session, "127.0.0.1", PSK64, IV64, port=server.port, name="PRG486WDH"
+        ) as transport:
+            await transport.receive()
+            assert "123456789" in await transport.receive()
+            await transport.send('{"resource":"/ci/services"}')
+    finally:
+        await server.close()
+
+    assert 'Received from PRG486WDH/127.0.0.1: {"resource": "/ro/values"}' in caplog.text
+    # Identifiers are left out of the log, not out of the message itself
+    assert "123456789" not in caplog.text
+    assert "68-A4-0E-00-00-01" not in caplog.text
+    assert 'Sent to PRG486WDH/127.0.0.1: {"resource": "/ci/services"}' in caplog.text
 
 
 async def test_aes_reconnect_starts_new_chains(session: aiohttp.ClientSession) -> None:
@@ -311,3 +349,13 @@ async def test_heartbeat_can_be_overridden_or_turned_off(
 ) -> None:
     transport = Transport(session, "appliance.local", PSK64, IV64, heartbeat=heartbeat)
     assert await connect_capturing_heartbeat(session, monkeypatch, transport) == heartbeat
+
+
+def test_appliance_hostname_follows_the_scheme() -> None:
+    assert (
+        appliance_hostname("TLS", "012345678901234567", "BOSCH", "Dishwasher")
+        == "BOSCH-Dishwasher-012345678901234567"
+    )
+    assert appliance_hostname("AES", "012345678901234567", "BOSCH", "Washer") == (
+        "012345678901234567"
+    )

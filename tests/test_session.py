@@ -10,6 +10,7 @@ from home_disconnect.errors import (
     AuthenticationError,
     ConnectionClosedError,
     ConnectionFailedError,
+    HomeDisconnectError,
 )
 from home_disconnect.messages import Action, Message, ResponseError
 from home_disconnect.session import ConnectionState, HandshakeError, Session
@@ -76,7 +77,7 @@ async def test_handshake_without_iz(
         assert "nonce" in appliance.received[2]["data"][0]
     finally:
         await session.close()
-    assert session.state is ConnectionState.CLOSED
+    assert session.state.value == "closed"
 
 
 async def test_handshake_with_iz_skips_authentication(
@@ -557,5 +558,131 @@ async def test_retry_now_does_nothing_unless_reconnecting(
         await asyncio.sleep(0.2)
         assert session.state is ConnectionState.RECONNECTING
         assert appliance.connections == 1
+    finally:
+        await session.close()
+
+
+async def test_start_connects_in_the_background(
+    client_session: aiohttp.ClientSession, appliance: FakeAppliance
+) -> None:
+    states: list[ConnectionState] = []
+    connected = asyncio.Event()
+
+    async def on_state(state: ConnectionState) -> None:
+        states.append(state)
+        if state is ConnectionState.CONNECTED:
+            connected.set()
+
+    session = make_session(client_session, appliance, on_state_change=on_state)
+    await session.start()
+    try:
+        await asyncio.wait_for(connected.wait(), 5)
+        assert states == [ConnectionState.CONNECTING, ConnectionState.CONNECTED]
+        assert session.service_versions
+    finally:
+        await session.close()
+
+
+async def test_start_keeps_trying_until_the_appliance_is_back(
+    client_session: aiohttp.ClientSession,
+    appliance: FakeAppliance,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A washer that turned its Wi-Fi off before Home Assistant started: start() mustn't give up.
+    monkeypatch.setattr(session_module, "RECONNECT_INITIAL_DELAY", 60)
+    states: list[ConnectionState] = []
+    reconnecting = asyncio.Event()
+    connected = asyncio.Event()
+
+    async def on_state(state: ConnectionState) -> None:
+        states.append(state)
+        if state is ConnectionState.RECONNECTING:
+            reconnecting.set()
+        elif state is ConnectionState.CONNECTED:
+            connected.set()
+
+    appliance.accepting = False
+    session = make_session(client_session, appliance, on_state_change=on_state)
+    await session.start()
+    try:
+        await asyncio.wait_for(reconnecting.wait(), 5)
+        assert not session.connected
+        appliance.accepting = True
+        session.retry_now()
+        await asyncio.wait_for(connected.wait(), 5)
+        assert states == [
+            ConnectionState.CONNECTING,
+            ConnectionState.RECONNECTING,
+            ConnectionState.CONNECTED,
+        ]
+    finally:
+        await session.close()
+
+
+async def test_start_retries_after_a_failed_handshake(
+    client_session: aiohttp.ClientSession,
+    appliance: FakeAppliance,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(session_module, "RECONNECT_INITIAL_DELAY", 0.05)
+    reconnecting = asyncio.Event()
+
+    async def on_state(state: ConnectionState) -> None:
+        if state is ConnectionState.RECONNECTING:
+            reconnecting.set()
+
+    appliance.responses["/ci/info"] = {"code": 400}
+    session = make_session(client_session, appliance, on_state_change=on_state)
+    await session.start()
+    try:
+        await asyncio.wait_for(reconnecting.wait(), 5)
+        assert session.state is ConnectionState.RECONNECTING
+    finally:
+        await session.close()
+    assert session.state.value == "closed"
+
+
+async def test_reconnect_max_delay_caps_the_backoff(
+    client_session: aiohttp.ClientSession,
+    appliance: FakeAppliance,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(session_module, "RECONNECT_INITIAL_DELAY", 0.05)
+    delays: list[float] = []
+    enough = asyncio.Event()
+
+    async def recording_wait(delay: float) -> bool:
+        delays.append(delay)
+        if len(delays) == 4:  # noqa: PLR2004
+            enough.set()
+        await asyncio.sleep(0)
+        return False
+
+    appliance.accepting = False
+    session = make_session(client_session, appliance, reconnect_max_delay=0.15)
+    monkeypatch.setattr(session, "_wait_to_retry", recording_wait)
+    await session.start()
+    try:
+        await asyncio.wait_for(enough.wait(), 5)
+        assert delays[:4] == [0.05, 0.1, 0.15, 0.15]
+    finally:
+        await session.close()
+
+
+async def test_start_refuses_without_reconnect_or_twice(
+    client_session: aiohttp.ClientSession, appliance: FakeAppliance
+) -> None:
+    session = make_session(client_session, appliance, reconnect=False)
+    with pytest.raises(HomeDisconnectError):
+        await session.start()
+    assert session.state is ConnectionState.DISCONNECTED
+
+    session = make_session(client_session, appliance)
+    await session.start()
+    try:
+        with pytest.raises(AlreadyConnectedError):
+            await session.start()
+        with pytest.raises(AlreadyConnectedError):
+            await session.connect()
     finally:
         await session.close()
