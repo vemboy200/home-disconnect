@@ -333,7 +333,7 @@ async def connect_capturing_heartbeat(
 
 def test_default_heartbeat_gives_the_pong_a_generous_window() -> None:
     # aiohttp closes the socket when no pong arrives within half the interval.
-    assert DEFAULT_HEARTBEAT == 60  # noqa: PLR2004
+    assert DEFAULT_HEARTBEAT == 40  # noqa: PLR2004
 
 
 async def test_heartbeat_defaults_to_the_constant(

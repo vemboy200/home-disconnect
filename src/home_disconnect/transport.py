@@ -47,9 +47,9 @@ TLS_PORT = 443
 AES_PORT = 80
 # aiohttp pings every `heartbeat` seconds and closes the socket (code 1006) when no pong comes
 # back within half that time. Idle ovens and hobs answer late every few minutes on a healthy
-# link, so 20 s dropped them again and again. 60 s leaves a 30 s window for the pong and still
-# notices a dead link within 90 s.
-DEFAULT_HEARTBEAT = 60.0
+# link, so 20 s dropped them again and again. 40 s leaves a 20 s window for the pong and still
+# notices a dead link within 60 s.
+DEFAULT_HEARTBEAT = 40.0
 
 
 def _reason(err: BaseException) -> str:
