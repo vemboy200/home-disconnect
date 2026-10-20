@@ -12,6 +12,7 @@ from home_disconnect.errors import AlreadyConnectedError, ConnectionFailedError
 from home_disconnect.messages import ResponseError
 from home_disconnect.profile import parse_profile
 from home_disconnect.session import ConnectionState
+from home_disconnect.transport import DEFAULT_HEARTBEAT
 
 from .fake_appliance import IV64, PSK64, SESSION_ID, FakeAppliance
 from .profile_fixtures import DESCRIPTION, FEATURE_MAPPING
@@ -357,6 +358,39 @@ async def test_retry_now_reconnects_the_appliance(
         assert appliance.connected
     finally:
         await appliance.close()
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [({}, DEFAULT_HEARTBEAT), ({"heartbeat": 5.0}, 5.0), ({"heartbeat": None}, None)],
+)
+async def test_heartbeat_reaches_the_websocket(
+    client_session: aiohttp.ClientSession,
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict[str, Any],
+    expected: float | None,
+) -> None:
+    seen: dict[str, object] = {}
+
+    async def fake_ws_connect(*_args: object, **ws_kwargs: object) -> None:
+        seen.update(ws_kwargs)
+        raise OSError
+
+    monkeypatch.setattr(client_session, "ws_connect", fake_ws_connect)
+    appliance = Appliance(
+        client_session,
+        "127.0.0.1",
+        parse_profile(DESCRIPTION, FEATURE_MAPPING),
+        PSK64,
+        IV64,
+        app_name="Test",
+        app_id="test-id",
+        reconnect=False,
+        **kwargs,
+    )
+    with pytest.raises(ConnectionFailedError):
+        await appliance.connect()
+    assert seen["heartbeat"] == expected
 
 
 async def test_start_reads_the_state_once_connected(

@@ -29,6 +29,7 @@ from .errors import AlreadyConnectedError, HomeDisconnectError
 from .keys import OptionKey, ProgramKey, SettingKey, StatusKey
 from .messages import Action, Message, ResponseError
 from .session import RECONNECT_MAX_DELAY, ConnectionState, Session
+from .transport import DEFAULT_HEARTBEAT
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, Mapping
@@ -89,12 +90,14 @@ class Appliance:
         reconnect: bool = True,
         reconnect_max_delay: float = RECONNECT_MAX_DELAY,
         port: int | None = None,
+        heartbeat: float | None = DEFAULT_HEARTBEAT,
         info: dict[str, Any] | None = None,
     ) -> None:
         """Set up the appliance. Nothing connects until `connect()` or `start()`.
 
         `reconnect` and `reconnect_max_delay` work as in `Session`.
 
+        `heartbeat` is the WebSocket ping interval in seconds; `None` turns it off.
         `info` seeds `self.info` (e.g. values stored from an earlier connection); the
         appliance's `/ci/info` or `/iz/info` answer updates it on every connect.
         """
@@ -111,6 +114,7 @@ class Appliance:
             reconnect=reconnect,
             reconnect_max_delay=reconnect_max_delay,
             port=port,
+            heartbeat=heartbeat,
             name=(info or {}).get("vib"),
         )
         self.entities = Entities(profile, self.session.request)

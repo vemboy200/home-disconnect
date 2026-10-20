@@ -34,7 +34,7 @@ from .errors import (
     HomeDisconnectError,
 )
 from .messages import Action, Message, RequestTracker, ResponseError
-from .transport import Transport
+from .transport import DEFAULT_HEARTBEAT, Transport
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -90,6 +90,7 @@ class Session:
         reconnect: bool = True,
         reconnect_max_delay: float = RECONNECT_MAX_DELAY,
         port: int | None = None,
+        heartbeat: float | None = DEFAULT_HEARTBEAT,
         request_timeout: float = REQUEST_TIMEOUT,
         name: str | None = None,
     ) -> None:
@@ -99,9 +100,12 @@ class Session:
         appliances that turn their Wi-Fi off between uses, so they're picked up soon after they
         come back.
 
-        `name` labels this appliance in the debug log, as in `Transport`.
+        `heartbeat` is the WebSocket ping interval in seconds, see `Transport`. `name` labels this
+        appliance in the debug log, as in `Transport`.
         """
-        self._transport = Transport(client_session, host, psk64, iv64, port=port, name=name)
+        self._transport = Transport(
+            client_session, host, psk64, iv64, port=port, heartbeat=heartbeat, name=name
+        )
         self._app_name = app_name
         self._app_id = app_id
         self._on_message = on_message
