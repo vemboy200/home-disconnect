@@ -515,8 +515,21 @@ class EventKey(StrEnum):
         "LaundryCare.Common.Event.SupplyPower.SupplyVoltageTooLow"
     )
     LAUNDRY_CARE_DRYER_CONDENSATE_CONTAINER_FULL = "LaundryCare.Dryer.Event.CondensateContainerFull"
+    LAUNDRY_CARE_DRYER_COOL_DOWN_PHASE_RUNNING = "LaundryCare.Dryer.Event.CoolDownPhaseRunning"
+    LAUNDRY_CARE_DRYER_DRYER_SELF_CLEANING_CLEAN_LINT_FILTER = (
+        "LaundryCare.Dryer.Event.DryerSelfCleaning.CleanLintFilter"
+    )
+    LAUNDRY_CARE_DRYER_DRYER_SELF_CLEANING_CLEAN_SELF_CLEANING_MODULE = (
+        "LaundryCare.Dryer.Event.DryerSelfCleaning.CleanSelfCleaningModule"
+    )
+    LAUNDRY_CARE_DRYER_DRYING_PROCESS_FINISHED = "LaundryCare.Dryer.Event.DryingProcessFinished"
+    LAUNDRY_CARE_DRYER_EASY_CLEAN_FILTER_REMIND_CLEANING = (
+        "LaundryCare.Dryer.Event.EasyClean.Filter.RemindCleaning"
+    )
+    LAUNDRY_CARE_DRYER_EVAPORATOR_FROZEN = "LaundryCare.Dryer.Event.EvaporatorFrozen"
     LAUNDRY_CARE_DRYER_LINT_FILTER_FULL = "LaundryCare.Dryer.Event.LintFilterFull"
     LAUNDRY_CARE_DRYER_MAINTENANCE_REMIND = "LaundryCare.Dryer.Event.Maintenance.Remind"
+    LAUNDRY_CARE_DRYER_REFRESHER_CONTAINER_EMPTY = "LaundryCare.Dryer.Event.RefresherContainerEmpty"
     LAUNDRY_CARE_WASHER_DRUM_CLEAN_REMINDER = "LaundryCare.Washer.Event.DrumCleanReminder"
     LAUNDRY_CARE_WASHER_I_DOS_I_DOS_OPEN_TRAY = "LaundryCare.Washer.Event.IDos.IDosOpenTray"
     LAUNDRY_CARE_WASHER_I_DOS_1_FILL_LEVEL_POOR = "LaundryCare.Washer.Event.IDos1FillLevelPoor"
