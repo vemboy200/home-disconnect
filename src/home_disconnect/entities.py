@@ -647,6 +647,11 @@ _ENTITY_CLASSES: dict[FeatureKind, type[Entity]] = {
 }
 
 
+# Keys of a program scoped option change that aren't applied again when the program is
+# selected later: the identifiers, and the value, which was only true when it was sent.
+_NOT_REMEMBERED = frozenset({"uid", "parentUID", "value"})
+
+
 class Entities(Mapping[str, Entity]):
     """Every entity and program of one appliance: a read-only mapping of name to entity.
 
@@ -663,6 +668,9 @@ class Entities(Mapping[str, Entity]):
         self.programs: dict[str, Program] = {}
         self.active_program: ActiveProgram | None = None
         self.selected_program: SelectedProgram | None = None
+        # Option description changes scoped to a program (parentUID), by program and option
+        # UID. See apply().
+        self._program_option_changes: dict[int, dict[int, dict[str, Any]]] = {}
         for feature in profile.features.values():
             entity: Entity
             if feature.kind is FeatureKind.EVENT:
@@ -778,6 +786,13 @@ class Entities(Mapping[str, Entity]):
         """Apply `/ro/values` or `/ro/descriptionChange` items. Returns what changed.
 
         Items for UIDs the profile doesn't know are skipped.
+
+        An option's description change can be scoped to a program: its `parentUID` is that
+        program's UID. It's only applied while that program is selected or active, otherwise
+        e.g. a change for an unused favorite would make the option read-only or unavailable for
+        every program. Its access, availability and range are remembered and applied when the
+        program is selected or started later (`/ro/allDescriptionChanges` comes before
+        `/ro/allMandatoryValues`, so the selected program isn't known yet when they arrive).
         """
         changed: list[Entity | Program] = []
         for item in items:
@@ -790,9 +805,63 @@ class Entities(Mapping[str, Entity]):
             if target is None:
                 _LOGGER.debug("Skipping an update for unknown UID %s", uid)
                 continue
+            if not self._apply_now(target, item):
+                continue
             if target.update(item) and target not in changed:
                 changed.append(target)
+            if isinstance(target, _ProgramRoot):
+                for restored in self._restore_program_scope(target):
+                    if restored not in changed:
+                        changed.append(restored)
         return changed
+
+    def _program_scope(self, target: Entity | Program, item: Mapping[str, Any]) -> int | None:
+        """Return the UID of the program an option's change is scoped to, or `None`.
+
+        Appliances also use other parents (an oven's cavity, for example); those aren't
+        program scoped.
+        """
+        if not isinstance(target, Option):
+            return None
+        try:
+            parent = int(item.get("parentUID") or 0)
+        except (TypeError, ValueError):
+            return None
+        return parent if parent in self.programs_by_uid else None
+
+    def _relevant_programs(self) -> set[int]:
+        """Return the UIDs of the selected and the active program."""
+        return {
+            root.program.uid
+            for root in (self.selected_program, self.active_program)
+            if root is not None and root.program is not None
+        }
+
+    def _apply_now(self, target: Entity | Program, item: Mapping[str, Any]) -> bool:
+        """Remember a program scoped option change; return whether to apply it now."""
+        program_uid = self._program_scope(target, item)
+        if program_uid is None:
+            return True
+        description = {k: v for k, v in item.items() if k not in _NOT_REMEMBERED}
+        if description:
+            changes = self._program_option_changes.setdefault(program_uid, {})
+            changes.setdefault(target.uid, {}).update(description)
+        if program_uid in self._relevant_programs():
+            return True
+        _LOGGER.debug("Not applying a change of %s for program %s", target.name, program_uid)
+        return False
+
+    def _restore_program_scope(self, root: _ProgramRoot) -> list[Entity]:
+        """Apply the remembered option changes of the program `root` now points to."""
+        program = root.program
+        if program is None:
+            return []
+        restored: list[Entity] = []
+        for uid, description in self._program_option_changes.get(program.uid, {}).items():
+            option = self.by_uid[uid]
+            if option.update(description):
+                restored.append(option)
+        return restored
 
     def dump(self) -> dict[str, Any]:
         """Every entity's and program's state, for diagnostics."""
