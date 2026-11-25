@@ -214,8 +214,7 @@ class Appliance:
         """Start a program (by default the selected one) with the right set of options.
 
         On appliances that want every option in a program write (`full_option_set`), that's
-        the complete set; otherwise the options with a known value, except the start and finish
-        delays, which can be left over from the previous program. `options` go on top (e.g.
+        the complete set; otherwise the options with a known value. `options` go on top (e.g.
         `{"BSH.Common.Option.FinishInRelative": 3600}` for a delayed start).
         `include_current_options=False` sends only `options` on appliances that don't need a
         full set (a hood's fan, for one, starts its venting program without them).
@@ -257,7 +256,7 @@ class Appliance:
         if program.full_option_set:
             current = program.full_option_values()
         elif include_current_options:
-            current = program.start_option_values()
+            current = program.known_option_values()
         else:
             current = {}
         await program.start(options, raw_options=current)
@@ -329,7 +328,7 @@ class Appliance:
             self._ensure_selectable(root)
             await program.select()
         elif program.execution is Execution.START_ONLY:
-            await program.start(raw_options=program.start_option_values())
+            await program.start(raw_options=program.known_option_values())
         else:
             msg = f"{program.name} can't be selected or started (execution {program.execution})"
             raise AccessError(msg)

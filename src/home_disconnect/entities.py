@@ -28,7 +28,7 @@ from itertools import chain
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from .errors import HomeDisconnectError
-from .keys import CommandKey, OptionKey, StatusKey
+from .keys import CommandKey, StatusKey
 from .messages import Action, Message
 from .profile import FeatureKind
 
@@ -41,13 +41,6 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 BOOLEAN_CONTENT_TYPE = 0x01
-
-# Options that set when a program runs. Their last value can belong to the previous program
-# (a washer kept a 3.5 h finish time after its program was changed on the appliance, upstream
-# issue chris-mc1/homeconnect_local_hass#599), so a start only sends them when asked to.
-DELAY_OPTION_NAMES = frozenset(
-    {OptionKey.BSH_COMMON_START_IN_RELATIVE, OptionKey.BSH_COMMON_FINISH_IN_RELATIVE}
-)
 
 type Requester = Callable[[Message], Awaitable[Message]]
 type EntityCallback = Callable[["Entity"], Awaitable[None]]
@@ -582,19 +575,6 @@ class Program:
             if value is not None and self._in_program_range(option, value):
                 values[option.uid] = value
         return values
-
-    def start_option_values(self) -> dict[int, Any]:
-        """Return the known values to send with a start, without the start and finish delays.
-
-        A delay's last value can be left over from the previous program and would start this
-        one delayed; delays go into a start only when given as options. Appliances that want a
-        full option set get `full_option_values()` instead, which keeps them.
-        """
-        return {
-            uid: value
-            for uid, value in self.known_option_values().items()
-            if self._entities.by_uid[uid].name not in DELAY_OPTION_NAMES
-        }
 
     def full_option_values(self) -> dict[int, Any]:
         """Return a complete option set, for appliances that want every option in a program write.

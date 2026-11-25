@@ -187,7 +187,7 @@ await appliance.start_program(delay=2 * 3600)  # start two hours later
 
 - Appliances that want every option with a program (`full_option_set`) get a complete set: known values, then the program's own defaults, then the options' own defaults, then their minimums.
 - A plain selection goes without options, so the appliance uses its own defaults instead of a value left over from another program.
-- Starting sends the options' last known values, leaving out read-only options, options the appliance doesn't offer at the moment, values outside the program's own range, and a meat probe setpoint with no probe plugged in. It also leaves out the start and finish delays (`StartInRelative`, `FinishInRelative`), whose last value can be left over from the previous program; pass them in `options` or use `delay` to send one. A full option set keeps them.
+- Starting sends the options' last known values, leaving out read-only options, options the appliance doesn't offer at the moment, values outside the program's own range, and a meat probe setpoint with no probe plugged in.
 
 `delay` (seconds) puts the delay in the form the appliance takes it: `StartInRelative` where the appliance has it, otherwise `FinishInRelative` set to the program's duration plus the delay. The duration is `EstimatedTotalProgramTime`, or `FinishInRelative`'s own value on appliances without the estimate. Some appliances only take a delay this way, as part of the start. A result above the option's maximum raises `DelayTooLongError` (with `.maximum` in seconds), and an unknown duration raises `ProgramDurationUnknownError`, both before anything is sent.
 

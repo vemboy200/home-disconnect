@@ -221,54 +221,6 @@ async def test_start_program_sends_known_values_plus_given_options(
     ]
 
 
-async def test_start_program_leaves_out_a_left_over_delay(
-    client_session: aiohttp.ClientSession, recorder: Recorder
-) -> None:
-    # A washer kept the previous program's finish time and started delayed (upstream #599).
-    appliance = make_appliance(client_session, recorder)
-    appliance.entities.apply(
-        [
-            {"uid": 0x0101, "value": BAKE},
-            {"uid": TEMPERATURE, "value": 200},
-            {"uid": FINISH_IN, "value": 12600},
-        ]
-    )
-    assert FINISH_IN in program(appliance.entities, BAKE).known_option_values()
-    await appliance.start_program()
-    # A delay asked for still goes in.
-    await appliance.start_program(options={"BSH.Common.Option.FinishInRelative": 3600})
-    assert recorder.sent == [
-        ("/ro/activeProgram", [{"program": BAKE, "options": [{"uid": TEMPERATURE, "value": 200}]}]),
-        (
-            "/ro/activeProgram",
-            [
-                {
-                    "program": BAKE,
-                    "options": [
-                        {"uid": TEMPERATURE, "value": 200},
-                        {"uid": FINISH_IN, "value": 3600},
-                    ],
-                }
-            ],
-        ),
-    ]
-
-
-async def test_start_program_keeps_the_delay_in_a_full_set(
-    client_session: aiohttp.ClientSession, recorder: Recorder
-) -> None:
-    # A full set needs every option; the program default would replace a finish time set on
-    # purpose, so the known value stays.
-    finish_in = 7200
-    appliance = make_appliance(client_session, recorder, active_flag="true")
-    appliance.entities.apply(
-        [{"uid": 0x0101, "value": BAKE}, {"uid": FINISH_IN, "value": finish_in}]
-    )
-    await appliance.start_program()
-    (_, data) = recorder.sent[0]
-    assert {o["uid"]: o["value"] for o in data[0]["options"]}[FINISH_IN] == finish_in
-
-
 async def test_start_program_sends_a_full_set_when_the_appliance_wants_one(
     client_session: aiohttp.ClientSession, recorder: Recorder
 ) -> None:
